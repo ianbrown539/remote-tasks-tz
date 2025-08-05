@@ -1,10 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../services/firebase';
-import { collection, query, where, onSnapshot, addDoc, doc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, doc, limit, startAfter, getDocs } from 'firebase/firestore';
 import { Clock, DollarSign, FileText, Languages, Trophy, X } from 'lucide-react';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import Skeleton from 'react-loading-skeleton';
+import 'react-loading-skeleton/dist/skeleton.css';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 
@@ -13,7 +15,7 @@ const UserDashboard = () => {
   const [availableTasks, setAvailableTasks] = useState([]);
   const [myTasks, setMyTasks] = useState([]);
   const [userApplications, setUserApplications] = useState([]);
-  const [categoryFilter, setCategoryFilter] = useState('available');
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [priceFilter, setPriceFilter] = useState('all');
   const [loadingAvailable, setLoadingAvailable] = useState(true);
   const [loadingMyTasks, setLoadingMyTasks] = useState(true);
@@ -26,6 +28,8 @@ const UserDashboard = () => {
   const [coverLetter, setCoverLetter] = useState('');
   const [modalErrors, setModalErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [lastTaskDoc, setLastTaskDoc] = useState(null);
+  const [hasMoreTasks, setHasMoreTasks] = useState(true);
   const modalRef = useRef(null);
 
   // Retry logic for Firestore operations
@@ -70,20 +74,29 @@ const UserDashboard = () => {
       }
     );
 
-    // Fetch available tasks
-    const availableQuery = query(collection(db, 'tasks'), where('status', '==', 'open'));
+    // Fetch available tasks with pagination
+    const availableQuery = query(
+      collection(db, 'tasks'),
+      where('status', '==', 'open'),
+      where('visibility', '==', 'public'),
+      limit(10)
+    );
     const unsubscribeAvailable = onSnapshot(
       availableQuery,
       (snapshot) => {
         const tasks = snapshot.docs
           .map((doc) => {
             const data = doc.data();
+            if (!data.title || !data.type || !data.payRate) {
+              console.warn(`Task ${doc.id} missing required fields:`, data);
+              return null;
+            }
             return {
               id: doc.id,
-              title: data.title || 'Untitled',
-              type: data.type || 'General',
-              payRate: Number(data.payRate) || 0,
-              status: data.status || 'open',
+              title: data.title,
+              type: data.type,
+              payRate: Number(data.payRate),
+              status: data.status,
               createdAt: data.createdAt || new Date().toISOString(),
               requirements: Array.isArray(data.requirements) ? data.requirements : [],
               description: data.description || 'No description provided',
@@ -93,17 +106,20 @@ const UserDashboard = () => {
               zoomLink: data.zoomLink || '',
             };
           })
+          .filter((task) => task !== null)
           .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         setAvailableTasks(tasks);
-        console.log('Available Tasks:', tasks);
+        setLastTaskDoc(snapshot.docs[snapshot.docs.length - 1]);
+        setHasMoreTasks(snapshot.docs.length === 10);
+        console.log('Available Tasks:', tasks, `Count: ${tasks.length}`);
         setLoadingAvailable(false);
       },
       (err) => {
-        console.error('Error fetching available tasks:', err);
+        console.error('Error fetching available tasks:', err, err.code);
         setError(
           err.code === 'permission-denied'
-            ? 'Permission denied when fetching tasks.'
-            : 'Failed to load available tasks.'
+            ? 'Permission denied when fetching tasks. Check Firestore rules.'
+            : `Failed to load available tasks: ${err.message}`
         );
         setLoadingAvailable(false);
       }
@@ -135,7 +151,7 @@ const UserDashboard = () => {
           })
           .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         setMyTasks(tasks);
-        console.log('My Tasks:', tasks);
+        console.log('My Tasks:', tasks, `Count: ${tasks.length}`);
         setLoadingMyTasks(false);
       },
       (err) => {
@@ -160,7 +176,7 @@ const UserDashboard = () => {
           status: doc.data().status,
         }));
         setUserApplications(apps);
-        console.log('User Applications:', apps);
+        console.log('User Applications:', apps, `Count: ${apps.length}`);
       },
       (err) => {
         console.error('Error fetching applications:', err);
@@ -175,6 +191,54 @@ const UserDashboard = () => {
       unsubscribeApplications();
     };
   }, [currentUser]);
+
+  // Load more tasks
+  const loadMoreTasks = async () => {
+    if (!hasMoreTasks || loadingAvailable) return;
+    setLoadingAvailable(true);
+    try {
+      const nextQuery = query(
+        collection(db, 'tasks'),
+        where('status', '==', 'open'),
+        where('visibility', '==', 'public'),
+        limit(10),
+        startAfter(lastTaskDoc)
+      );
+      const snapshot = await withRetry(() => getDocs(nextQuery));
+      const newTasks = snapshot.docs
+        .map((doc) => {
+          const data = doc.data();
+          if (!data.title || !data.type || !data.payRate) {
+            console.warn(`Task ${doc.id} missing required fields:`, data);
+            return null;
+          }
+          return {
+            id: doc.id,
+            title: data.title,
+            type: data.type,
+            payRate: Number(data.payRate),
+            status: data.status,
+            createdAt: data.createdAt || new Date().toISOString(),
+            requirements: Array.isArray(data.requirements) ? data.requirements : [],
+            description: data.description || 'No description provided',
+            duration: data.duration || 'N/A',
+            difficulty: data.difficulty || 'N/A',
+            deadline: data.deadline || 'N/A',
+            zoomLink: data.zoomLink || '',
+          };
+        })
+        .filter((task) => task !== null);
+      setAvailableTasks((prev) => [...prev, ...newTasks]);
+      setLastTaskDoc(snapshot.docs[snapshot.docs.length - 1]);
+      setHasMoreTasks(snapshot.docs.length === 10);
+      console.log('Loaded more tasks:', newTasks, `Total: ${availableTasks.length + newTasks.length}`);
+    } catch (err) {
+      console.error('Error loading more tasks:', err);
+      toast.error('Failed to load more tasks.');
+    } finally {
+      setLoadingAvailable(false);
+    }
+  };
 
   // Scroll modal into view
   useEffect(() => {
@@ -247,7 +311,7 @@ const UserDashboard = () => {
       setSelectedTask(null);
       toast.success('Application submitted successfully!');
     } catch (error) {
-      console.error('Error applying to task:');
+      console.error('Error applying to task:', error);
       toast.error(`Failed to apply: ${error.message}`);
     } finally {
       setIsSubmitting(false);
@@ -315,7 +379,6 @@ const UserDashboard = () => {
   return (
     <>
       <div className="min-h-screen bg-gray-100">
-        <Header />
         <div className="container mx-auto px-4 py-6 relative">
           {error && (
             <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
@@ -324,7 +387,7 @@ const UserDashboard = () => {
           )}
 
           {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <div className="grid grid-cols-2 gap-6 mb-8">
             <div className="bg-white border rounded-lg p-6 shadow-sm">
               <div className="flex items-center space-x-2">
                 <Trophy className="h-8 w-8 text-blue-600" />
@@ -361,6 +424,157 @@ const UserDashboard = () => {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Available Tasks Filters */}
+          <div className="bg-white border rounded-lg p-6 mb-8 shadow-sm">
+            <h2 className="text-lg font-semibold mb-2">Available Tasks</h2>
+            <p className="text-sm text-gray-500 mb-4">Browse and apply for available tasks</p>
+            <div className="flex flex-wrap gap-4 mb-6">
+              <div className="flex-1 min-w-[200px]">
+                <label htmlFor="categoryFilter" className="text-sm font-medium mb-2 block">
+                  Category
+                </label>
+                <select
+                  id="categoryFilter"
+                  className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  aria-label="Filter tasks by category"
+                >
+                  <option value="all">All Categories</option>
+                  <option value="Translation">Translation</option>
+                  <option value="Content Writing">Content Writing</option>
+                  <option value="Graphic Design">Graphic Design</option>
+                  <option value="Data Entry">Data Entry</option>
+                  <option value="Web Development">Web Development</option>
+                </select>
+              </div>
+              <div className="flex-1 min-w-[200px]">
+                <label htmlFor="priceFilter" className="text-sm font-medium mb-2 block">
+                  Price Range
+                </label>
+                <select
+                  id="priceFilter"
+                  className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  value={priceFilter}
+                  onChange={(e) => setPriceFilter(e.target.value)}
+                  aria-label="Filter tasks by price range"
+                >
+                  <option value="all">All Prices</option>
+                  <option value="low">$1 - $12</option>
+                  <option value="medium">$13 - $16</option>
+                  <option value="high">$17+</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Available Tasks Cards */}
+            {loadingAvailable ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[...Array(6)].map((_, index) => (
+                  <div key={index} className="bg-white border rounded-lg p-6 shadow-sm">
+                    <Skeleton height={24} width={200} />
+                    <Skeleton height={16} width={100} className="mt-2" />
+                    <Skeleton height={16} width={150} className="mt-2" />
+                    <Skeleton height={16} width={120} className="mt-2" />
+                    <Skeleton height={40} width={120} className="mt-4" />
+                  </div>
+                ))}
+              </div>
+            ) : error ? (
+              <div className="text-center py-8">
+                <p className="text-red-600">{error}</p>
+                <button
+                  className="mt-4 bg-blue-600 text-white rounded-md px-4 py-2 hover:bg-blue-700"
+                  onClick={() => window.location.reload()}
+                  aria-label="Retry loading tasks"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : filteredTasks.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-gray-500">No available tasks match your filters.</p>
+                <button
+                  className="mt-4 bg-blue-600 text-white rounded-md px-4 py-2 hover:bg-blue-700"
+                  onClick={() => {
+                    setCategoryFilter('all');
+                    setPriceFilter('all');
+                  }}
+                  aria-label="Reset filters"
+                >
+                  View All Tasks
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {filteredTasks.map((task) => (
+                    <div key={task.id} className="bg-white border rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow">
+                      <h3 className="text-lg font-semibold mb-2">{task.title}</h3>
+                      <div className="flex items-center mb-2">
+                        <span
+                          className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
+                            task.type === 'Translation'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}
+                        >
+                          {task.type === 'Translation' ? (
+                            <Languages className="h-3 w-3 mr-1" />
+                          ) : (
+                            <FileText className="h-3 w-3 mr-1" />
+                          )}
+                          {task.type}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-600 mb-2 line-clamp-2">{task.description}</p>
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        <span className="text-sm text-gray-500">Price: ${task.payRate}</span>
+                        <span className="text-sm text-gray-500">Duration: {task.duration}</span>
+                        <span className="text-sm text-gray-500">Difficulty: {task.difficulty}</span>
+                      </div>
+                      <button
+                        className={`w-full rounded-md px-4 py-2 transition-colors ${
+                          hasApplied(task.id)
+                            ? 'bg-gray-400 text-white cursor-not-allowed'
+                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }`}
+                        onClick={() => {
+                          if (!hasApplied(task.id)) {
+                            setSelectedTask(task);
+                            setIsApplyModalOpen(true);
+                          }
+                        }}
+                        disabled={hasApplied(task.id)}
+                        aria-label={
+                          hasApplied(task.id)
+                            ? `Already applied for ${task.title}`
+                            : `Apply for ${task.title}`
+                        }
+                      >
+                        {hasApplied(task.id) ? 'Applied' : 'Apply Now'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {hasMoreTasks && (
+                  <div className="text-center mt-6">
+                    <button
+                      className={`bg-blue-600 text-white rounded-md px-4 py-2 hover:bg-blue-700 ${
+                        loadingAvailable ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
+                      onClick={loadMoreTasks}
+                      disabled={loadingAvailable}
+                      aria-label="Load more tasks"
+                    >
+                      {loadingAvailable ? 'Loading...' : 'Load More'}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           {/* Productivity Tips */}
@@ -515,6 +729,7 @@ const UserDashboard = () => {
                         setSelectedTask(null);
                       }}
                       disabled={isSubmitting}
+                      aria-label="Cancel application"
                     >
                       Cancel
                     </button>
@@ -556,270 +771,102 @@ const UserDashboard = () => {
             </div>
           )}
 
-          {/* Tabs */}
-          <div className="space-y-6">
-            <div className="flex border-b">
-              <button
-                className={`px-4 py-2 font-medium ${
-                  categoryFilter === 'available' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'
-                }`}
-                onClick={() => setCategoryFilter('available')}
-                aria-label="View available tasks"
-              >
-                Available Tasks
-              </button>
-              <button
-                className={`px-4 py-2 font-medium ${
-                  categoryFilter === 'my-tasks' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'
-                }`}
-                onClick={() => setCategoryFilter('my-tasks')}
-                aria-label="View my tasks"
-              >
-                My Tasks
-              </button>
-            </div>
-
-            {categoryFilter === 'available' && (
-              <div className="space-y-6">
-                {/* Filters */}
-                <div className="bg-white border rounded-lg p-6 shadow-sm">
-                  <div className="flex flex-wrap gap-4">
-                    <div className="flex-1 min-w-[200px]">
-                      <label htmlFor="categoryFilter" className="text-sm font-medium mb-2 block">
-                        Category
-                      </label>
-                      <select
-                        id="categoryFilter"
-                        className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        value={categoryFilter}
-                        onChange={(e) => setCategoryFilter(e.target.value)}
-                        aria-label="Filter tasks by category"
-                      >
-                        <option value="all">All Categories</option>
-                        <option value="Translation">Translation</option>
-                        <option value="Content Writing">Content Writing</option>
-                        <option value="Graphic Design">Graphic Design</option>
-                        <option value="Data Entry">Data Entry</option>
-                        <option value="Web Development">Web Development</option>
-                      </select>
-                    </div>
-                    <div className="flex-1 min-w-[200px]">
-                      <label htmlFor="priceFilter" className="text-sm font-medium mb-2 block">
-                        Price Range
-                      </label>
-                      <select
-                        id="priceFilter"
-                        className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        value={priceFilter}
-                        onChange={(e) => setPriceFilter(e.target.value)}
-                        aria-label="Filter tasks by price range"
-                      >
-                        <option value="all">All Prices</option>
-                        <option value="low">$1 - $12</option>
-                        <option value="medium">$13 - $16</option>
-                        <option value="high">$17+</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Available Tasks Table */}
-                <div className="bg-white border rounded-lg p-6 shadow-sm">
-                  <h2 className="text-lg font-semibold mb-2">Available Tasks</h2>
-                  <p className="text-sm text-gray-500 mb-4">Browse and apply for available tasks</p>
-                  {loadingAvailable ? (
-                    <div className="flex justify-center">
-                      <svg className="animate-spin h-8 w-8 text-blue-600" viewBox="0 0 24 24">
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                          fill="none"
-                        />
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                        />
-                      </svg>
-                    </div>
-                  ) : error ? (
-                    <p className="text-red-600">{error}</p>
-                  ) : filteredTasks.length === 0 ? (
-                    <p>No available tasks match your filters.</p>
-                  ) : (
-                    <table className="w-full">
-                      <thead>
-                        <tr className="bg-gray-100">
-                          <th className="p-3 text-left">Title</th>
-                          <th className="p-3 text-left">Category</th>
-                          <th className="p-3 text-left">Price</th>
-                          <th className="p-3 text-left">Status</th>
-                          <th className="p-3 text-left">Created</th>
-                          <th className="p-3 text-left">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredTasks.map((task) => (
-                          <tr key={task.id} className="border-t">
-                            <td className="p-3 font-medium">{task.title}</td>
-                            <td className="p-3">
-                              <span
-                                className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
-                                  task.type === 'Translation'
-                                    ? 'bg-blue-100 text-blue-800'
-                                    : 'bg-gray-100 text-gray-800'
-                                }`}
-                              >
-                                {task.type === 'Translation' ? (
-                                  <Languages className="h-3 w-3 mr-1" />
-                                ) : (
-                                  <FileText className="h-3 w-3 mr-1" />
-                                )}
-                                {task.type}
-                              </span>
-                            </td>
-                            <td className="p-3">${task.payRate}</td>
-                            <td className="p-3">
-                              <span
-                                className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium text-white ${getStatusColor(
-                                  task.status
-                                )}`}
-                              >
-                                {task.status}
-                              </span>
-                            </td>
-                            <td className="p-3">{task.createdAt.split('T')[0]}</td>
-                            <td className="p-3">
-                              <button
-                                className={`rounded-md px-3 py-1 transition-colors ${
-                                  hasApplied(task.id)
-                                    ? 'bg-gray-400 text-white cursor-not-allowed'
-                                    : 'bg-blue-600 text-white hover:bg-blue-700'
-                                }`}
-                                onClick={() => {
-                                  if (!hasApplied(task.id)) {
-                                    setSelectedTask(task);
-                                    setIsApplyModalOpen(true);
-                                  }
-                                }}
-                                disabled={hasApplied(task.id)}
-                                aria-label={
-                                  hasApplied(task.id)
-                                    ? `Already applied for ${task.title}`
-                                    : `Apply for ${task.title}`
-                                }
-                              >
-                                {hasApplied(task.id) ? 'Applied' : 'Apply'}
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
+          {/* My Tasks Section */}
+          <div className="bg-white border rounded-lg p-6 shadow-sm">
+            <h2 className="text-lg font-semibold mb-2">My Tasks</h2>
+            <p className="text-sm text-gray-500 mb-4">Manage your assigned tasks</p>
+            {loadingMyTasks ? (
+              <div className="space-y-4">
+                <Skeleton height={40} count={5} />
               </div>
-            )}
-
-            {categoryFilter === 'my-tasks' && (
-              <div className="bg-white border rounded-lg p-6 shadow-sm">
-                <h2 className="text-lg font-semibold mb-2">My Tasks</h2>
-                <p className="text-sm text-gray-500 mb-4">Manage your assigned tasks</p>
-                {loadingMyTasks ? (
-                  <div className="flex justify-center">
-                    <svg className="animate-spin h-8 w-8 text-blue-600" viewBox="0 0 24 24">
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                        fill="none"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                      />
-                    </svg>
-                  </div>
-                ) : error ? (
-                  <p className="text-red-600">{error}</p>
-                ) : myTasks.length === 0 ? (
-                  <p>No tasks assigned.</p>
-                ) : (
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-gray-100">
-                        <th className="p-3 text-left">Title</th>
-                        <th className="p-3 text-left">Category</th>
-                        <th className="p-3 text-left">Price</th>
-                        <th className="p-3 text-left">Status</th>
-                        <th className="p-3 text-left">Created</th>
-                        <th className="p-3 text-left">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {myTasks.map((task) => (
-                        <tr key={task.id} className="border-t">
-                          <td className="p-3 font-medium">{task.title}</td>
-                          <td className="p-3">
-                            <span
-                              className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
-                                task.type === 'Translation'
-                                  ? 'bg-blue-100 text-blue-800'
-                                  : 'bg-gray-100 text-gray-800'
-                              }`}
-                            >
-                              {task.type === 'Translation' ? (
-                                <Languages className="h-3 w-3 mr-1" />
-                              ) : (
-                                <FileText className="h-3 w-3 mr-1" />
-                              )}
-                              {task.type}
-                            </span>
-                          </td>
-                          <td className="p-3">${task.payRate}</td>
-                          <td className="p-3">
-                            <span
-                              className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium text-white ${getStatusColor(
-                                task.status
-                              )}`}
-                            >
-                              {task.status}
-                            </span>
-                          </td>
-                          <td className="p-3">{task.createdAt.split('T')[0]}</td>
-                          <td className="p-3">
-                            {task.status === 'in-progress' && (
-                              <button
-                                className={`rounded-md px-3 py-1 transition-colors ${
-                                  trackingTask === task.id
-                                    ? 'bg-red-600 text-white hover:bg-red-700'
-                                    : 'bg-blue-600 text-white hover:bg-blue-700'
-                                }`}
-                                onClick={() => handleTimeTracking(task.id)}
-                                aria-label={
-                                  trackingTask === task.id ? 'Stop tracking time' : 'Start tracking time'
-                                }
-                              >
-                                {trackingTask === task.id
-                                  ? `Stop (${Math.floor(workHours / 60)}m ${workHours % 60}s)`
-                                  : 'Track Time'}
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
+            ) : error ? (
+              <div className="text-center py-8">
+                <p className="text-red-600">{error}</p>
+                <button
+                  className="mt-4 bg-blue-600 text-white rounded-md px-4 py-2 hover:bg-blue-700"
+                  onClick={() => window.location.reload()}
+                  aria-label="Retry loading tasks"
+                >
+                  Retry
+                </button>
               </div>
+            ) : myTasks.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-gray-500">No tasks assigned.</p>
+                <button
+                  className="mt-4 bg-blue-600 text-white rounded-md px-4 py-2 hover:bg-blue-700"
+                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                  aria-label="Browse available tasks"
+                >
+                  Browse Available Tasks
+                </button>
+              </div>
+            ) : (
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-100">
+                    <th className="p-3 text-left">Title</th>
+                    <th className="p-3 text-left">Category</th>
+                    <th className="p-3 text-left">Price</th>
+                    <th className="p-3 text-left">Status</th>
+                    <th className="p-3 text-left">Created</th>
+                    <th className="p-3 text-left">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {myTasks.map((task) => (
+                    <tr key={task.id} className="border-t">
+                      <td className="p-3 font-medium">{task.title}</td>
+                      <td className="p-3">
+                        <span
+                          className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
+                            task.type === 'Translation'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}
+                        >
+                          {task.type === 'Translation' ? (
+                            <Languages className="h-3 w-3 mr-1" />
+                          ) : (
+                            <FileText className="h-3 w-3 mr-1" />
+                          )}
+                          {task.type}
+                        </span>
+                      </td>
+                      <td className="p-3">${task.payRate}</td>
+                      <td className="p-3">
+                        <span
+                          className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium text-white ${getStatusColor(
+                            task.status
+                          )}`}
+                        >
+                          {task.status}
+                        </span>
+                      </td>
+                      <td className="p-3">{task.createdAt.split('T')[0]}</td>
+                      <td className="p-3">
+                        {task.status === 'in-progress' && (
+                          <button
+                            className={`rounded-md px-3 py-1 transition-colors ${
+                              trackingTask === task.id
+                                ? 'bg-red-600 text-white hover:bg-red-700'
+                                : 'bg-blue-600 text-white hover:bg-blue-700'
+                            }`}
+                            onClick={() => handleTimeTracking(task.id)}
+                            aria-label={
+                              trackingTask === task.id ? 'Stop tracking time' : 'Start tracking time'
+                            }
+                          >
+                            {trackingTask === task.id
+                              ? `Stop (${Math.floor(workHours / 60)}m ${workHours % 60}s)`
+                              : 'Track Time'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
         </div>

@@ -3,6 +3,10 @@ import { useAuth } from '../context/AuthContext';
 import { db } from '../services/firebase';
 import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { Plus, Edit, Trash2, Users, DollarSign, FileText, TrendingUp, CheckCircle, XCircle, Clock, X } from 'lucide-react';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import Skeleton from 'react-loading-skeleton';
+import 'react-loading-skeleton/dist/skeleton.css';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 
@@ -30,35 +34,94 @@ const AdminDashboard = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const modalRef = useRef(null);
 
+  // Retry logic for Firestore operations
+  const withRetry = async (fn, retries = 3, delay = 1000) => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        return await fn();
+      } catch (err) {
+        if (i === retries - 1) throw err;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  };
+
   // Fetch data
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      setLoading(false);
+      return;
+    }
 
     const userRef = doc(db, 'users', currentUser.uid);
-    const unsubscribeUser = onSnapshot(userRef, (doc) => {
-      if (doc.exists() && doc.data().role === 'admin') {
-        setIsAdmin(true);
-      } else {
-        setIsAdmin(false);
+    const unsubscribeUser = onSnapshot(
+      userRef,
+      (doc) => {
+        if (doc.exists() && doc.data().role === 'admin') {
+          setIsAdmin(true);
+        } else {
+          setIsAdmin(false);
+        }
+        setLoading(false);
+      },
+      (err) => {
+        console.error('Error fetching user role:', err);
+        toast.error('Failed to verify admin status.');
         setLoading(false);
       }
-    });
+    );
 
     const tasksQuery = query(collection(db, 'tasks'));
-    const unsubscribeTasks = onSnapshot(tasksQuery, (snapshot) => {
-      setTasks(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-      setLoading(false);
-    });
+    const unsubscribeTasks = onSnapshot(
+      tasksQuery,
+      (snapshot) => {
+        const taskData = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          title: doc.data().title || 'Untitled',
+          type: doc.data().type || 'General',
+          payRate: Number(doc.data().payRate) || 0,
+          status: doc.data().status || 'open',
+          createdAt: doc.data().createdAt || new Date().toISOString(),
+        }));
+        setTasks(taskData);
+        console.log('Tasks fetched:', taskData, `Count: ${taskData.length}`);
+        setLoading(false);
+      },
+      (err) => {
+        console.error('Error fetching tasks:', err);
+        toast.error('Failed to load tasks.');
+        setLoading(false);
+      }
+    );
 
     const applicationsQuery = query(collection(db, 'applications'));
-    const unsubscribeApplications = onSnapshot(applicationsQuery, (snapshot) => {
-      setApplications(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-    });
+    const unsubscribeApplications = onSnapshot(
+      applicationsQuery,
+      (snapshot) => {
+        const appData = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        setApplications(appData);
+        console.log('Applications fetched:', appData);
+      },
+      (err) => {
+        console.error('Error fetching applications:', err);
+        toast.error('Failed to load applications.');
+      }
+    );
 
     const usersQuery = query(collection(db, 'users'));
-    const unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
-      setUsers(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-    });
+    const unsubscribeUsers = onSnapshot(
+      usersQuery,
+      (snapshot) => {
+        const userData = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        setUsers(userData);
+        console.log('Users fetched:', userData);
+      },
+      (err) => {
+        console.error('Error fetching users:', err);
+        toast.error('Failed to load users.');
+      }
+    );
 
     return () => {
       unsubscribeUser();
@@ -77,19 +140,19 @@ const AdminDashboard = () => {
 
   // Validate form inputs
   const validateForm = () => {
-    const newErrors = {};
-    if (!newTask.title.trim()) newErrors.title = 'Task title is required';
-    if (!newTask.description.trim()) newErrors.description = 'Description is required';
-    if (!newTask.type) newErrors.type = 'Category is required';
-    if (!newTask.payRate || newTask.payRate <= 0) newErrors.payRate = 'Price must be greater than $0';
-    if (!newTask.duration.trim()) newErrors.duration = 'Duration is required';
-    if (!newTask.difficulty) newErrors.difficulty = 'Difficulty is required';
-    if (!newTask.deadline) newErrors.deadline = 'Deadline is required';
+    const newTaskErrors = {};
+    if (!newTask.title.trim()) newTaskErrors.title = 'Task title is required';
+    if (!newTask.description.trim()) newTaskErrors.description = 'Description is required';
+    if (!newTask.type) newTaskErrors.type = 'Category is required';
+    if (!newTask.payRate || newTask.payRate <= 0) newTaskErrors.payRate = 'Price must be greater than $0';
+    if (!newTask.duration.trim()) newTaskErrors.duration = 'Duration is required';
+    if (!newTask.difficulty) newTaskErrors.difficulty = 'Difficulty is required';
+    if (!newTask.deadline) newTaskErrors.deadline = 'Deadline is required';
     if (newTask.zoomLink && !/^https:\/\/(zoom\.us|us\d{2}web\.zoom\.us)\/j\//.test(newTask.zoomLink)) {
-      newErrors.zoomLink = 'Invalid Zoom link';
+      newTaskErrors.zoomLink = 'Invalid Zoom link';
     }
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    setErrors(newTaskErrors);
+    return Object.keys(newTaskErrors).length === 0;
   };
 
   // Create task
@@ -97,14 +160,19 @@ const AdminDashboard = () => {
     if (!validateForm()) return;
     setIsSubmitting(true);
     try {
-      await addDoc(collection(db, 'tasks'), {
+      const taskData = {
         ...newTask,
         payRate: Number(newTask.payRate),
         status: 'open',
-        assignedTo: null,
+        assignedTo: null, // Explicitly null for general tasks
+        visibility: 'public', // Mark as public for all users
         createdAt: new Date().toISOString(),
-        requirements: newTask.requirements.split(',').map((req) => req.trim()).filter((req) => req),
-      });
+        requirements: newTask.requirements
+          .split(',')
+          .map((req) => req.trim())
+          .filter((req) => req),
+      };
+      await withRetry(() => addDoc(collection(db, 'tasks'), taskData));
       setNewTask({
         title: '',
         description: '',
@@ -118,10 +186,11 @@ const AdminDashboard = () => {
       });
       setErrors({});
       setIsCreateTaskOpen(false);
-      alert('Task created successfully!');
+      toast.success('Task created successfully!');
+      console.log('Task created:', taskData);
     } catch (error) {
       console.error('Error creating task:', error);
-      alert(`Failed to create task: ${error.message}`);
+      toast.error(`Failed to create task: ${error.message}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -130,11 +199,11 @@ const AdminDashboard = () => {
   // Delete task
   const handleDeleteTask = async (taskId) => {
     try {
-      await deleteDoc(doc(db, 'tasks', taskId));
-      alert('Task deleted!');
+      await withRetry(() => deleteDoc(doc(db, 'tasks', taskId)));
+      toast.success('Task deleted successfully!');
     } catch (error) {
       console.error('Error deleting task:', error);
-      alert('Failed to delete task.');
+      toast.error('Failed to delete task.');
     }
   };
 
@@ -143,29 +212,36 @@ const AdminDashboard = () => {
     try {
       const appRef = doc(db, 'applications', appId);
       const app = applications.find((a) => a.id === appId);
-      await updateDoc(appRef, { status: action });
+      await withRetry(() => updateDoc(appRef, { status: action }));
       if (action === 'approved') {
-        await updateDoc(doc(db, 'tasks', app.taskId), {
-          status: 'in-progress',
-          assignedTo: app.userId,
-        });
+        await withRetry(() =>
+          updateDoc(doc(db, 'tasks', app.taskId), {
+            status: 'in-progress',
+            assignedTo: app.userId,
+          })
+        );
       }
-      alert(`Application ${action}!`);
+      toast.success(`Application ${action}!`);
     } catch (error) {
       console.error(`Error ${action} application:`, error);
-      alert(`Failed to ${action} application.`);
+      toast.error(`Failed to ${action} application.`);
     }
   };
 
   const getStatusColor = (status) => {
     switch (status) {
       case 'open':
-      case 'approved': return 'bg-green-500';
-      case 'completed': return 'bg-blue-500';
+      case 'approved':
+        return 'bg-green-500';
+      case 'completed':
+        return 'bg-blue-500';
       case 'applied':
-      case 'pending': return 'bg-yellow-500';
-      case 'rejected': return 'bg-red-500';
-      default: return 'bg-gray-500';
+      case 'pending':
+        return 'bg-yellow-500';
+      case 'rejected':
+        return 'bg-red-500';
+      default:
+        return 'bg-gray-500';
     }
   };
 
@@ -191,6 +267,7 @@ const AdminDashboard = () => {
               <button
                 className="bg-blue-600 text-white py-2 px-4 rounded-md flex items-center hover:bg-blue-700 transition-colors"
                 onClick={() => setIsCreateTaskOpen(true)}
+                aria-label="Create new task"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Create Task
@@ -268,10 +345,10 @@ const AdminDashboard = () => {
 
           {/* Task Creation Modal */}
           {isCreateTaskOpen && (
-            <div className="relative bg-black bg-opacity-50 py-8">
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center py-8 z-50">
               <div
                 ref={modalRef}
-                className="bg-white rounded-lg p-6 sm:max-w-[600px] w-full mx-auto my-8 shadow-xl transform transition-all duration-300 scale-100 max-h-[calc(100vh-4rem)] overflow-y-auto"
+                className="bg-white rounded-lg p-6 sm:max-w-[600px] w-full mx-auto shadow-xl transform transition-all duration-300 scale-100 max-h-[calc(100vh-4rem)] overflow-y-auto"
                 role="dialog"
                 aria-labelledby="modal-title"
               >
@@ -451,6 +528,7 @@ const AdminDashboard = () => {
                       required
                       aria-invalid={errors.deadline ? 'true' : 'false'}
                       aria-describedby={errors.deadline ? 'deadline-error' : undefined}
+                      min={new Date().toISOString().split('T')[0]} // Prevent past dates
                     />
                     {errors.deadline && (
                       <p id="deadline-error" className="text-red-500 text-xs mt-1">{errors.deadline}</p>
@@ -492,6 +570,7 @@ const AdminDashboard = () => {
                         setErrors({});
                       }}
                       disabled={isSubmitting}
+                      aria-label="Cancel task creation"
                     >
                       Cancel
                     </button>
@@ -525,24 +604,28 @@ const AdminDashboard = () => {
               <button
                 className={`px-4 py-2 font-medium ${categoryFilter === 'tasks' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`}
                 onClick={() => setCategoryFilter('tasks')}
+                aria-label="View task management"
               >
                 Task Management
               </button>
               <button
                 className={`px-4 py-2 font-medium ${categoryFilter === 'applications' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`}
                 onClick={() => setCategoryFilter('applications')}
+                aria-label="View applications"
               >
                 Applications
               </button>
               <button
                 className={`px-4 py-2 font-medium ${categoryFilter === 'users' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`}
                 onClick={() => setCategoryFilter('users')}
+                aria-label="View user management"
               >
                 User Management
               </button>
               <button
                 className={`px-4 py-2 font-medium ${categoryFilter === 'analytics' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`}
                 onClick={() => setCategoryFilter('analytics')}
+                aria-label="View analytics"
               >
                 Analytics
               </button>
@@ -552,50 +635,71 @@ const AdminDashboard = () => {
               <div className="bg-white border rounded-lg p-6 shadow-sm">
                 <h2 className="text-lg font-semibold mb-2">Task Management</h2>
                 <p className="text-sm text-gray-500 mb-4">Manage all tasks and their status</p>
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-gray-100">
-                      <th className="p-3 text-left">Title</th>
-                      <th className="p-3 text-left">Category</th>
-                      <th className="p-3 text-left">Price</th>
-                      <th className="p-3 text-left">Applicants</th>
-                      <th className="p-3 text-left">Status</th>
-                      <th className="p-3 text-left">Created</th>
-                      <th className="p-3 text-left">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tasks.map((task) => (
-                      <tr key={task.id} className="border-t">
-                        <td className="p-3 font-medium">{task.title}</td>
-                        <td className="p-3">{task.type}</td>
-                        <td className="p-3">${task.payRate}</td>
-                        <td className="p-3">
-                          {applications.filter((a) => a.taskId === task.id).length}
-                        </td>
-                        <td className="p-3">
-                          <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium text-white ${getStatusColor(task.status)}`}>
-                            {task.status}
-                          </span>
-                        </td>
-                        <td className="p-3">{task.createdAt.split('T')[0]}</td>
-                        <td className="p-3">
-                          <div className="flex space-x-2">
-                            <button className="border border-gray-300 rounded-md p-2 hover:bg-gray-100">
-                              <Edit className="h-4 w-4" />
-                            </button>
-                            <button
-                              className="border border-gray-300 rounded-md p-2 hover:bg-gray-100"
-                              onClick={() => handleDeleteTask(task.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </td>
+                {loading ? (
+                  <div className="space-y-4">
+                    <Skeleton height={40} count={5} />
+                  </div>
+                ) : tasks.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500">No tasks available.</p>
+                    <button
+                      className="mt-4 bg-blue-600 text-white rounded-md px-4 py-2"
+                      onClick={() => setIsCreateTaskOpen(true)}
+                      aria-label="Create a new task"
+                    >
+                      Create a Task
+                    </button>
+                  </div>
+                ) : (
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-gray-100">
+                        <th className="p-3 text-left">Title</th>
+                        <th className="p-3 text-left">Category</th>
+                        <th className="p-3 text-left">Price</th>
+                        <th className="p-3 text-left">Applicants</th>
+                        <th className="p-3 text-left">Status</th>
+                        <th className="p-3 text-left">Created</th>
+                        <th className="p-3 text-left">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {tasks.map((task) => (
+                        <tr key={task.id} className="border-t">
+                          <td className="p-3 font-medium">{task.title}</td>
+                          <td className="p-3">{task.type}</td>
+                          <td className="p-3">${task.payRate}</td>
+                          <td className="p-3">
+                            {applications.filter((a) => a.taskId === task.id).length}
+                          </td>
+                          <td className="p-3">
+                            <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium text-white ${getStatusColor(task.status)}`}>
+                              {task.status}
+                            </span>
+                          </td>
+                          <td className="p-3">{task.createdAt.split('T')[0]}</td>
+                          <td className="p-3">
+                            <div className="flex space-x-2">
+                              <button
+                                className="border border-gray-300 rounded-md p-2 hover:bg-gray-100"
+                                aria-label={`Edit task ${task.title}`}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </button>
+                              <button
+                                className="border border-gray-300 rounded-md p-2 hover:bg-gray-100"
+                                onClick={() => handleDeleteTask(task.id)}
+                                aria-label={`Delete task ${task.title}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             )}
 
@@ -603,53 +707,65 @@ const AdminDashboard = () => {
               <div className="bg-white border rounded-lg p-6 shadow-sm">
                 <h2 className="text-lg font-semibold mb-2">Task Applications</h2>
                 <p className="text-sm text-gray-500 mb-4">Review and manage user applications</p>
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-gray-100">
-                      <th className="p-3 text-left">Task</th>
-                      <th className="p-3 text-left">User</th>
-                      <th className="p-3 text-left">Email</th>
-                      <th className="p-3 text-left">Experience</th>
-                      <th className="p-3 text-left">Status</th>
-                      <th className="p-3 text-left">Applied</th>
-                      <th className="p-3 text-left">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {applications.map((app) => (
-                      <tr key={app.id} className="border-t">
-                        <td className="p-3 font-medium">{app.taskTitle}</td>
-                        <td className="p-3">{app.userName}</td>
-                        <td className="p-3">{app.userEmail}</td>
-                        <td className="p-3">{app.experience}</td>
-                        <td className="p-3">
-                          <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium text-white ${getStatusColor(app.status)}`}>
-                            {app.status}
-                          </span>
-                        </td>
-                        <td className="p-3">{app.appliedAt.split('T')[0]}</td>
-                        <td className="p-3">
-                          {app.status === 'pending' && (
-                            <div className="flex space-x-2">
-                              <button
-                                className="border border-gray-300 rounded-md p-2 hover:bg-gray-100"
-                                onClick={() => handleApplicationAction(app.id, 'approved')}
-                              >
-                                <CheckCircle className="h-4 w-4" />
-                              </button>
-                              <button
-                                className="border border-gray-300 rounded-md p-2 hover:bg-gray-100"
-                                onClick={() => handleApplicationAction(app.id, 'rejected')}
-                              >
-                                <XCircle className="h-4 w-4" />
-                              </button>
-                            </div>
-                          )}
-                        </td>
+                {loading ? (
+                  <div className="space-y-4">
+                    <Skeleton height={40} count={5} />
+                  </div>
+                ) : applications.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500">No applications available.</p>
+                  </div>
+                ) : (
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-gray-100">
+                        <th className="p-3 text-left">Task</th>
+                        <th className="p-3 text-left">User</th>
+                        <th className="p-3 text-left">Email</th>
+                        <th className="p-3 text-left">Experience</th>
+                        <th className="p-3 text-left">Status</th>
+                        <th className="p-3 text-left">Applied</th>
+                        <th className="p-3 text-left">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {applications.map((app) => (
+                        <tr key={app.id} className="border-t">
+                          <td className="p-3 font-medium">{app.taskTitle}</td>
+                          <td className="p-3">{app.userName}</td>
+                          <td className="p-3">{app.userEmail}</td>
+                          <td className="p-3">{app.experience}</td>
+                          <td className="p-3">
+                            <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium text-white ${getStatusColor(app.status)}`}>
+                              {app.status}
+                            </span>
+                          </td>
+                          <td className="p-3">{app.appliedAt.split('T')[0]}</td>
+                          <td className="p-3">
+                            {app.status === 'pending' && (
+                              <div className="flex space-x-2">
+                                <button
+                                  className="border border-gray-300 rounded-md p-2 hover:bg-gray-100"
+                                  onClick={() => handleApplicationAction(app.id, 'approved')}
+                                  aria-label={`Approve application for ${app.taskTitle}`}
+                                >
+                                  <CheckCircle className="h-4 w-4" />
+                                </button>
+                                <button
+                                  className="border border-gray-300 rounded-md p-2 hover:bg-gray-100"
+                                  onClick={() => handleApplicationAction(app.id, 'rejected')}
+                                  aria-label={`Reject application for ${app.taskTitle}`}
+                                >
+                                  <XCircle className="h-4 w-4" />
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             )}
 
@@ -657,30 +773,40 @@ const AdminDashboard = () => {
               <div className="bg-white border rounded-lg p-6 shadow-sm">
                 <h2 className="text-lg font-semibold mb-2">User Management</h2>
                 <p className="text-sm text-gray-500 mb-4">Manage registered users and their performance</p>
-                <table className="w-full">
-                  <thead>
-                    <tr className="bg-gray-100">
-                      <th className="p-3 text-left">Name</th>
-                      <th className="p-3 text-left">Email</th>
-                      <th className="p-3 text-left">Completed Tasks</th>
-                      <th className="p-3 text-left">Success Rate</th>
-                      <th className="p-3 text-left">Total Earned</th>
-                      <th className="p-3 text-left">Joined</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {users.map((user) => (
-                      <tr key={user.id} className="border-t">
-                        <td className="p-3 font-medium">{user.name}</td>
-                        <td className="p-3">{user.email}</td>
-                        <td className="p-3">{user.completedTasks || 0}</td>
-                        <td className="p-3">{user.successRate || '0%'}</td>
-                        <td className="p-3">${user.totalEarned || 0}</td>
-                        <td className="p-3">{user.joinedAt || 'N/A'}</td>
+                {loading ? (
+                  <div className="space-y-4">
+                    <Skeleton height={40} count={5} />
+                  </div>
+                ) : users.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500">No users registered.</p>
+                  </div>
+                ) : (
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-gray-100">
+                        <th className="p-3 text-left">Name</th>
+                        <th className="p-3 text-left">Email</th>
+                        <th className="p-3 text-left">Completed Tasks</th>
+                        <th className="p-3 text-left">Success Rate</th>
+                        <th className="p-3 text-left">Total Earned</th>
+                        <th className="p-3 text-left">Joined</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {users.map((user) => (
+                        <tr key={user.id} className="border-t">
+                          <td className="p-3 font-medium">{user.name || 'N/A'}</td>
+                          <td className="p-3">{user.email}</td>
+                          <td className="p-3">{user.completedTasks || 0}</td>
+                          <td className="p-3">{user.successRate || '0%'}</td>
+                          <td className="p-3">${user.totalEarned || 0}</td>
+                          <td className="p-3">{user.joinedAt ? user.joinedAt.split('T')[0] : 'N/A'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             )}
 
@@ -736,6 +862,7 @@ const AdminDashboard = () => {
             )}
           </div>
         </div>
+        <ToastContainer position="top-right" autoClose={3000} />
       </div>
       <Footer />
     </>
