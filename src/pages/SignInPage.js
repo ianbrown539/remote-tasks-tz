@@ -31,7 +31,6 @@ function SignInPage() {
 
   return (
     <>
-      <Header />
       <main className="flex-grow bg-blue-50 text-blue-900">
         <section className="max-w-7xl mx-auto py-12 px-4">
           <div className="flex flex-col md:flex-row items-center gap-8">
