@@ -2,13 +2,14 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../services/firebase';
 import { collection, query, where, onSnapshot, addDoc, doc, limit, startAfter, getDocs } from 'firebase/firestore';
-import { Clock, DollarSign, FileText, Languages, Trophy, X } from 'lucide-react';
+import { Clock, DollarSign, FileText, Languages, Trophy } from 'lucide-react';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Skeleton from 'react-loading-skeleton';
 import 'react-loading-skeleton/dist/skeleton.css';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
+import CompleteApplication from '../components/CompleteApplication';
 
 const UserDashboard = () => {
   const { currentUser } = useAuth();
@@ -25,12 +26,9 @@ const UserDashboard = () => {
   const [workHours, setWorkHours] = useState(0);
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
-  const [coverLetter, setCoverLetter] = useState('');
-  const [modalErrors, setModalErrors] = useState({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadingApply, setLoadingApply] = useState(null); // Track loading state for each task
   const [lastTaskDoc, setLastTaskDoc] = useState(null);
   const [hasMoreTasks, setHasMoreTasks] = useState(true);
-  const modalRef = useRef(null);
 
   // Retry logic for Firestore operations
   const withRetry = async (fn, retries = 3, delay = 1000) => {
@@ -240,12 +238,17 @@ const UserDashboard = () => {
     }
   };
 
-  // Scroll modal into view
-  useEffect(() => {
-    if (isApplyModalOpen && modalRef.current) {
-      modalRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Handle apply button click with 3-second loader
+  const handleApplyClick = (task) => {
+    if (!hasApplied(task.id)) {
+      setLoadingApply(task.id);
+      setTimeout(() => {
+        setLoadingApply(null);
+        setSelectedTask(task);
+        setIsApplyModalOpen(true);
+      }, 3000);
     }
-  }, [isApplyModalOpen]);
+  };
 
   // Time tracking
   useEffect(() => {
@@ -278,45 +281,6 @@ const UserDashboard = () => {
     }
     return () => clearInterval(saveTimer);
   }, [trackingTask, workHours, currentUser]);
-
-  // Validate application form
-  const validateForm = () => {
-    const newErrors = {};
-    if (!coverLetter.trim()) newErrors.coverLetter = 'Cover letter is required';
-    setModalErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  // Apply to a task
-  const handleApply = async () => {
-    if (!validateForm()) return;
-    setIsSubmitting(true);
-    try {
-      await withRetry(() =>
-        addDoc(collection(db, 'applications'), {
-          taskId: selectedTask.id,
-          taskTitle: selectedTask.title,
-          userId: currentUser.uid,
-          userName: userProfile?.name || currentUser.email,
-          userEmail: currentUser.email,
-          experience: userProfile?.skills?.join(', ') || 'N/A',
-          coverLetter,
-          status: 'pending',
-          appliedAt: new Date().toISOString(),
-        })
-      );
-      setIsApplyModalOpen(false);
-      setCoverLetter('');
-      setModalErrors({});
-      setSelectedTask(null);
-      toast.success('Application submitted successfully!');
-    } catch (error) {
-      console.error('Error applying to task:', error);
-      toast.error(`Failed to apply: ${error.message}`);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   // Time tracking
   const handleTimeTracking = async (taskId) => {
@@ -536,25 +500,48 @@ const UserDashboard = () => {
                         <span className="text-sm text-gray-500">Difficulty: {task.difficulty}</span>
                       </div>
                       <button
-                        className={`w-full rounded-md px-4 py-2 transition-colors ${
+                        className={`w-full rounded-md px-4 py-2 transition-colors flex items-center justify-center ${
                           hasApplied(task.id)
                             ? 'bg-gray-400 text-white cursor-not-allowed'
+                            : loadingApply === task.id
+                            ? 'bg-blue-600 text-white opacity-50 cursor-not-allowed'
                             : 'bg-blue-600 text-white hover:bg-blue-700'
                         }`}
-                        onClick={() => {
-                          if (!hasApplied(task.id)) {
-                            setSelectedTask(task);
-                            setIsApplyModalOpen(true);
-                          }
-                        }}
-                        disabled={hasApplied(task.id)}
+                        onClick={() => handleApplyClick(task)}
+                        disabled={hasApplied(task.id) || loadingApply === task.id}
                         aria-label={
                           hasApplied(task.id)
                             ? `Already applied for ${task.title}`
+                            : loadingApply === task.id
+                            ? `Loading application for ${task.title}`
                             : `Apply for ${task.title}`
                         }
                       >
-                        {hasApplied(task.id) ? 'Applied' : 'Apply Now'}
+                        {hasApplied(task.id) ? (
+                          'Applied'
+                        ) : loadingApply === task.id ? (
+                          <>
+                            <svg className="animate-spin h-5 w-5 mr-2 text-white" viewBox="0 0 24 24">
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                                fill="none"
+                              />
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                              />
+                            </svg>
+                            Loading...
+                          </>
+                        ) : (
+                          'Apply Now'
+                        )}
                       </button>
                     </div>
                   ))}
@@ -590,185 +577,16 @@ const UserDashboard = () => {
 
           {/* Task Application Modal */}
           {isApplyModalOpen && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center py-8 z-50">
-              <div
-                ref={modalRef}
-                className="bg-white rounded-lg p-6 sm:max-w-[600px] w-full mx-auto shadow-xl transform transition-all duration-300 scale-100 max-h-[calc(100vh-4rem)] overflow-y-auto"
-                role="dialog"
-                aria-labelledby="modal-title"
-              >
-                <div className="flex justify-between items-center mb-4">
-                  <h2 id="modal-title" className="text-xl font-bold text-gray-900">Apply for Task</h2>
-                  <button
-                    className="text-gray-500 hover:text-gray-700"
-                    onClick={() => {
-                      setIsApplyModalOpen(false);
-                      setCoverLetter('');
-                      setModalErrors({});
-                      setSelectedTask(null);
-                    }}
-                    aria-label="Close modal"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                </div>
-                <p className="text-sm text-gray-500 mb-6">Review task details and submit your application.</p>
-                <div className="space-y-6">
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 block mb-1">Task Title</label>
-                    <input
-                      className="w-full p-2 border rounded-md bg-gray-100"
-                      value={selectedTask?.title || 'Untitled'}
-                      disabled
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 block mb-1">Category</label>
-                    <input
-                      className="w-full p-2 border rounded-md bg-gray-100"
-                      value={selectedTask?.type || 'General'}
-                      disabled
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 block mb-1">Description</label>
-                    <textarea
-                      className="w-full p-2 border rounded-md bg-gray-100"
-                      value={selectedTask?.description || 'No description provided'}
-                      rows="4"
-                      disabled
-                    />
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className="text-sm font-medium text-gray-700 block mb-1">Price ($)</label>
-                      <input
-                        className="w-full p-2 border rounded-md bg-gray-100"
-                        value={selectedTask?.payRate || 0}
-                        disabled
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-700 block mb-1">Duration</label>
-                      <input
-                        className="w-full p-2 border rounded-md bg-gray-100"
-                        value={selectedTask?.duration || 'N/A'}
-                        disabled
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-700 block mb-1">Difficulty</label>
-                      <input
-                        className="w-full p-2 border rounded-md bg-gray-100"
-                        value={selectedTask?.difficulty || 'N/A'}
-                        disabled
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 block mb-1">Requirements</label>
-                    <div className="flex flex-wrap gap-1">
-                      {(selectedTask?.requirements?.length > 0 ? selectedTask.requirements : ['None']).map(
-                        (req, index) => (
-                          <span
-                            key={index}
-                            className="inline-flex items-center px-2 py-1 rounded text-xs border border-gray-300"
-                          >
-                            {req}
-                          </span>
-                        )
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 block mb-1">Deadline</label>
-                    <input
-                      className="w-full p-2 border rounded-md bg-gray-100"
-                      value={selectedTask?.deadline || 'N/A'}
-                      disabled
-                    />
-                  </div>
-                  {selectedTask?.zoomLink && (
-                    <div>
-                      <label className="text-sm font-medium text-gray-700 block mb-1">Zoom Link</label>
-                      <input
-                        className="w-full p-2 border rounded-md bg-gray-100"
-                        value={selectedTask.zoomLink}
-                        disabled
-                      />
-                    </div>
-                  )}
-                  <div>
-                    <label htmlFor="coverLetter" className="text-sm font-medium text-gray-700 block mb-1">
-                      Cover Letter <span className="text-red-500">*</span>
-                    </label>
-                    <textarea
-                      id="coverLetter"
-                      className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                        modalErrors.coverLetter ? 'border-red-500' : 'border-gray-300'
-                      }`}
-                      placeholder="Why are you a good fit for this task?"
-                      value={coverLetter}
-                      onChange={(e) => setCoverLetter(e.target.value)}
-                      rows="4"
-                      required
-                      aria-invalid={modalErrors.coverLetter ? 'true' : 'false'}
-                      aria-describedby={modalErrors.coverLetter ? 'coverLetter-error' : undefined}
-                    />
-                    {modalErrors.coverLetter && (
-                      <p id="coverLetter-error" className="text-red-500 text-xs mt-1">{modalErrors.coverLetter}</p>
-                    )}
-                  </div>
-                  <div className="flex justify-end space-x-2">
-                    <button
-                      className="border border-gray-300 rounded-md px-4 py-2 hover:bg-gray-100 transition-colors"
-                      onClick={() => {
-                        setIsApplyModalOpen(false);
-                        setCoverLetter('');
-                        setModalErrors({});
-                        setSelectedTask(null);
-                      }}
-                      disabled={isSubmitting}
-                      aria-label="Cancel application"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      className={`bg-blue-600 text-white rounded-md px-4 py-2 hover:bg-blue-700 transition-colors flex items-center ${
-                        isSubmitting ? 'opacity-50 cursor-not-allowed' : ''
-                      }`}
-                      onClick={handleApply}
-                      disabled={isSubmitting}
-                      aria-label={isSubmitting ? 'Submitting application...' : 'Submit application'}
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <svg className="animate-spin h-5 w-5 mr-2 text-white" viewBox="0 0 24 24">
-                            <circle
-                              className="opacity-25"
-                              cx="12"
-                              cy="12"
-                              r="10"
-                              stroke="currentColor"
-                              strokeWidth="4"
-                              fill="none"
-                            />
-                            <path
-                              className="opacity-75"
-                              fill="currentColor"
-                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                            />
-                          </svg>
-                          Submitting...
-                        </>
-                      ) : (
-                        'Submit Application'
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <CompleteApplication
+              task={selectedTask}
+              userProfile={userProfile}
+              currentUser={currentUser}
+              onClose={() => setIsApplyModalOpen(false)}
+              onSubmit={() => {
+                setIsApplyModalOpen(false);
+                toast.success('Application submitted successfully!');
+              }}
+            />
           )}
 
           {/* My Tasks Section */}
