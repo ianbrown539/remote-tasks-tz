@@ -1,18 +1,23 @@
-import { initializeApp } from 'firebase/app';
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
-import { getAnalytics } from 'firebase/analytics';
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
 
 // Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: 'AIzaSyBLmlQd2-6-9NkdR6EcW2RGpuc6NgHxDoI',
-  authDomain: 'work-from-home-b02f2.firebaseapp.com',
-  projectId: 'work-from-home-b02f2',
-  storageBucket: 'work-from-home-b02f2.firebasestorage.app',
-  messagingSenderId: '55979273116',
-  appId: '1:55979273116:web:d5fe6426ed4bb8b1c3f659',
-  measurementId: 'G-JFWG39L8P3',
+  apiKey: "AIzaSyAp5CrpSIbVL3AFl-cfBHBBDE8xpDwvbTA",
+  authDomain: "ai-training-tasks.firebaseapp.com",
+  projectId: "ai-training-tasks",
+  storageBucket: "ai-training-tasks.firebasestorage.app",
+  messagingSenderId: "635815062881",
+  appId: "1:635815062881:web:3e0463099cda2b712fa920",
+  measurementId: "G-Q8QG41159X"
 };
+
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);

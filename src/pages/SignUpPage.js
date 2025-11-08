@@ -2,13 +2,28 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { auth, db } from '../services/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+
+// Helper to generate a random referral code (e.g., SD23ZIM1)
+const generateReferralCode = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const nums = '0123456789';
+  let code = '';
+  code += chars.charAt(Math.floor(Math.random() * chars.length)); // Start with letter
+  code += chars.charAt(Math.floor(Math.random() * chars.length));
+  for (let i = 0; i < 4; i++) {
+    code += nums.charAt(Math.floor(Math.random() * nums.length)); // Add 4 numbers
+  }
+  code += chars.charAt(Math.floor(Math.random() * chars.length)); // End with letter
+  return code;
+};
 
 function SignUpPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [phone, setPhone] = useState(''); // Added for phone input
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -34,17 +49,26 @@ function SignUpPage() {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
+
       const role = email === 'workfromhome.onlinepay@gmail.com' ? 'admin' : 'user';
+      const referralCode = generateReferralCode();
 
       await setDoc(doc(db, 'users', user.uid), {
-        name,
-        email,
-        role,
+        balance: 1000,
+        createdAt: serverTimestamp(),
+        email: email,
+        hasDoneFirstTask: false,
+        isActive: false,
+        isVIP: false,
+        name: name,
+        phone: phone || '+254755444444', // Fallback if phone not provided
+        referralCode: referralCode,
+        userId: user.uid,
+        role: role,
         appliedTasks: 0,
         completedTasks: 0,
         thisMonthEarned: 0,
         successRate: '0%',
-        createdAt: new Date().toISOString(),
         onboardingCompleted: false,
       });
 
@@ -142,6 +166,18 @@ function SignUpPage() {
                   onChange={(e) => setName(e.target.value)}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
                   placeholder="John Doe"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Phone Number</label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition"
+                  placeholder="+254755444444"
                   required
                 />
               </div>

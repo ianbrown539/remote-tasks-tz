@@ -4,10 +4,14 @@ import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import confetti from 'canvas-confetti';
 import { Clock, Upload, FileText, Image, CheckCircle, ArrowLeft, Play, Pause, DollarSign, ChevronRight, AlertCircle } from 'lucide-react';
+import { db } from '../services/firebase';
+import { doc, updateDoc, getDoc, collection, query, where, getDocs, serverTimestamp, limit } from 'firebase/firestore'; // Added limit
+import { useAuth } from '../context/AuthContext';
 
 const Working = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
   const task = location.state?.task;
 
   const [seconds, setSeconds] = useState(0);
@@ -17,9 +21,10 @@ const Working = () => {
   const [answers, setAnswers] = useState({});
   const [uploadedFiles, setUploadedFiles] = useState({});
   const [isDragging, setIsDragging] = useState(false);
+  const [loading, setLoading] = useState(false);
   const fileInputRef = useRef();
 
-  // Sample AI training questions for different task types
+  // Sample AI training questions for different task categories
   const questionSets = {
     'Translation': [
       {
@@ -126,19 +131,56 @@ const Working = () => {
         question: 'Describe any potential biases or issues you notice in the image that could affect AI training',
         required: true
       }
+    ],
+    'Image Classification': [
+      {
+        id: 1,
+        type: 'opinion',
+        question: 'Classify the sentiment of the following image: A smiling child playing in a park. Choose one:',
+        options: ['Positive', 'Negative', 'Neutral'],
+        required: true
+      },
+      {
+        id: 2,
+        type: 'file',
+        question: 'Upload an image for classification',
+        acceptedFormats: 'image/*',
+        required: true
+      },
+      {
+        id: 3,
+        type: 'text',
+        question: 'Describe the main elements in the uploaded image',
+        required: true
+      },
+      {
+        id: 4,
+        type: 'opinion',
+        question: 'What is the primary object or subject in the image?',
+        options: ['Person', 'Animal', 'Object', 'Landscape'],
+        required: true
+      },
+      {
+        id: 5,
+        type: 'text',
+        question: 'Explain why you classified the image this way',
+        required: true
+      }
     ]
   };
 
-  // Select appropriate question set based on task type, fallback to Content Writing
-  const questions = questionSets[task?.type] || questionSets['Content Writing'];
+  // Select appropriate question set based on task category, fallback to Content Writing
+  const questions = questionSets[task?.category] || questionSets['Content Writing'];
 
-  // Redirect if no task
+  // Redirect if no task or user
   useEffect(() => {
-    if (!task) {
-      toast.error('No task selected');
+    if (!task || !currentUser) {
+      toast.error('No task selected or user not authenticated');
       navigate('/dashboard');
+      return;
     }
-  }, [task, navigate]);
+    setLoading(false);
+  }, [task, currentUser, navigate]);
 
   // Timer
   useEffect(() => {
@@ -235,7 +277,7 @@ const Working = () => {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const unansweredRequired = questions.filter(q => q.required && !isQuestionAnswered(q));
     
     if (unansweredRequired.length > 0) {
@@ -245,14 +287,100 @@ const Working = () => {
 
     setUploading(true);
 
-    setTimeout(() => {
+    try {
+      // Find the userTask document
+      const userTaskQuery = query(
+        collection(db, 'userTasks'),
+        where('userId', '==', currentUser.uid),
+        where('taskId', '==', task.id),
+        where('status', '==', 'active'),
+        limit(1)
+      );
+      const userTaskDocs = await getDocs(userTaskQuery);
+      
+      if (userTaskDocs.empty) {
+        toast.error('Task not found or already completed');
+        setUploading(false);
+        return;
+      }
+
+      const userTaskDoc = userTaskDocs.docs[0];
+      const userTaskId = userTaskDoc.id;
+
+      // Prepare submission data (simulate file upload metadata)
+      const submissionData = {};
+      Object.keys(answers).forEach(questionId => {
+        if (uploadedFiles[questionId]) {
+          const file = uploadedFiles[questionId];
+          submissionData[questionId] = {
+            type: 'file',
+            fileName: file.name,
+            fileType: file.type,
+            fileSize: file.size,
+            // For production, upload to Firebase Storage and store download URL
+            // url: await uploadToStorage(file)
+          };
+        } else {
+          submissionData[questionId] = {
+            type: questions.find(q => q.id === parseInt(questionId)).type,
+            answer: answers[questionId]
+          };
+        }
+      });
+
+      // Calculate random approval delay (5-20 minutes in milliseconds)
+      const minDelay = 5 * 60 * 1000;
+      const maxDelay = 20 * 60 * 1000;
+      const approvalDelay = minDelay + Math.random() * (maxDelay - minDelay);
+      const autoApprovalTime = new Date(Date.now() + approvalDelay);
+
+      // Update userTask document
+      await updateDoc(doc(db, 'userTasks', userTaskId), {
+        status: 'completed',
+        completedAt: serverTimestamp(),
+        submissionData,
+        autoApprovalScheduledAt: autoApprovalTime,
+      });
+
+      // Update user completedTasks and hasDoneFirstTask
+      const userRef = doc(db, 'users', currentUser.uid);
+      const userDoc = await getDoc(userRef);
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        await updateDoc(userRef, {
+          completedTasks: (userData.completedTasks || 0) + 1,
+          hasDoneFirstTask: userData.hasDoneFirstTask || true
+        });
+      }
+
+      // Update dailyTaskAssignments
+      const today = new Date().toISOString().split('T')[0];
+      const assignmentQuery = query(
+        collection(db, 'dailyTaskAssignments'),
+        where('userId', '==', currentUser.uid),
+        where('date', '==', today),
+        limit(1)
+      );
+      const assignmentDocs = await getDocs(assignmentQuery);
+      if (!assignmentDocs.empty) {
+        const assignmentDoc = assignmentDocs.docs[0];
+        const assignmentData = assignmentDoc.data();
+        await updateDoc(doc(db, 'dailyTaskAssignments', assignmentDoc.id), {
+          tasksCompleted: (assignmentData.tasksCompleted || 0) + 1
+        });
+      }
+
       confetti({ particleCount: 200, spread: 70, origin: { y: 0.6 } });
-      toast.success(`Task completed successfully! You earned $${task.payRate}`, {
+      toast.success(`Task completed successfully! Approval pending in ~${Math.round(approvalDelay / 60000)} minutes`, {
         autoClose: 4000,
       });
       setUploading(false);
       setTimeout(() => navigate('/dashboard'), 3500);
-    }, 1500);
+    } catch (error) {
+      console.error('Error submitting task:', error);
+      toast.error('Failed to submit task. Please try again.');
+      setUploading(false);
+    }
   };
 
   const toggleTimer = () => {
@@ -265,7 +393,19 @@ const Working = () => {
     return Math.round((answeredCount / questions.length) * 100);
   };
 
-  if (!task) return null;
+  if (!task || loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 flex items-center justify-center">
+        <div className="text-center">
+          <svg className="animate-spin h-10 w-10 text-amber-400 mx-auto mb-4" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          <p className="text-white text-lg">Loading task...</p>
+        </div>
+      </div>
+    );
+  }
 
   const currentQ = questions[currentQuestion];
 
@@ -311,7 +451,7 @@ const Working = () => {
             <div className="flex-1">
               <div className="flex items-center space-x-3 mb-3">
                 <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30">
-                  {task.type || 'AI Training'}
+                  {task.category || 'AI Training'}
                 </span>
                 <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-green-400/20 text-green-300 border border-green-400/30">
                   {getProgress()}% Complete
@@ -331,7 +471,7 @@ const Working = () => {
               <div className="flex items-center justify-center">
                 <DollarSign className="w-6 h-6 text-amber-400" />
                 <span className="text-3xl font-black text-amber-400">
-                  {task.payRate}
+                  {task.paymentAmount}
                 </span>
               </div>
             </div>
@@ -600,7 +740,7 @@ const Working = () => {
                       <span>Submitting...</span>
                     </span>
                   ) : (
-                    `Submit & Earn $${task.payRate}`
+                    `Submit & Earn $${task.paymentAmount}`
                   )}
                 </button>
               )}

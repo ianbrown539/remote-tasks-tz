@@ -1,27 +1,26 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { db } from '../services/firebase';
-import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, getDocs, where } from 'firebase/firestore';
-import { Plus, Edit, Trash2, Users, DollarSign, FileText, TrendingUp, CheckCircle, XCircle, Clock, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { db, auth } from '../services/firebase';
+import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, getDocs, where, serverTimestamp, getDoc, limit } from 'firebase/firestore';
+import { Plus, Edit, Trash2, Users, DollarSign, FileText, TrendingUp, CheckCircle, XCircle, Clock, X, LogOut } from 'lucide-react';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Skeleton from 'react-loading-skeleton';
 import 'react-loading-skeleton/dist/skeleton.css';
-import Header from '../components/Header';
-import Footer from '../components/Footer';
 
 const AdminDashboard = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, userRole } = useAuth();
+  const navigate = useNavigate();
   const [tasks, setTasks] = useState([]);
-  const [applications, setApplications] = useState([]);
+  const [userTasks, setUserTasks] = useState([]);
   const [users, setUsers] = useState([]);
   const [isCreateTaskOpen, setIsCreateTaskOpen] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('tasks');
   const [newTask, setNewTask] = useState({
     title: '',
-    description: '',
-    type: '',
-    payRate: '',
+    category: '',
+    paymentAmount: '',
     duration: '',
     difficulty: '',
     requirements: '',
@@ -31,11 +30,7 @@ const AdminDashboard = () => {
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
   const modalRef = useRef(null);
-
-  // System user ID for storing global tasks
-  const SYSTEM_USER_ID = 'system-tasks';
 
   // Retry logic for Firestore operations
   const withRetry = async (fn, retries = 3, delay = 1000) => {
@@ -52,104 +47,86 @@ const AdminDashboard = () => {
 
   // Fetch data
   useEffect(() => {
-    if (!currentUser) {
+    if (!currentUser || userRole !== 'admin') {
       setLoading(false);
-      toast.error('Please sign in to access the dashboard.');
+      toast.error('Access denied. Admins only.');
+      navigate('/dashboard');
       return;
     }
 
-    const userRef = doc(db, 'users', currentUser.uid);
-    const unsubscribeUser = onSnapshot(
-      userRef,
-      (doc) => {
-        if (doc.exists() && doc.data().role === 'admin') {
-          setIsAdmin(true);
-        } else {
-          setIsAdmin(false);
-          toast.error('Access denied. Admins only.');
-        }
-        setLoading(false);
-      },
-      (err) => {
-        console.error('Error fetching user role:', err);
-        toast.error('Failed to verify admin status.');
-        setLoading(false);
-      }
-    );
+    // Fetch tasks
+    const tasksQuery = query(collection(db, 'tasks'));
+    const unsubscribeTasks = onSnapshot(tasksQuery, (snapshot) => {
+      const taskData = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        title: doc.data().title || 'Untitled',
+        category: doc.data().category || 'General',
+        paymentAmount: Number(doc.data().paymentAmount) || 0,
+        isActive: doc.data().isActive !== false,
+        createdAt: doc.data().createdAt?.toDate()?.toISOString() || new Date().toISOString(),
+      }));
+      setTasks(taskData);
+      console.log('Tasks fetched:', taskData, `Count: ${taskData.length}`);
+      setLoading(false);
+    }, (err) => {
+      console.error('Error fetching tasks:', err);
+      toast.error('Failed to load tasks.');
+      setLoading(false);
+    });
 
-    // Fetch tasks from system-tasks user
-    const tasksQuery = query(collection(db, 'users', SYSTEM_USER_ID, 'tasks'));
-    const unsubscribeTasks = onSnapshot(
-      tasksQuery,
-      (snapshot) => {
-        const taskData = snapshot.docs.map((doc) => {
-          const data = doc.data();
-          if (data.status === 'applied') {
-            console.warn(`Task ${doc.id} has unexpected status: 'applied'`, data);
-          }
-          if (data.assignedTo && data.status === 'open') {
-            console.warn(`Task ${doc.id} has assignedTo: ${data.assignedTo} but status is open`, data);
-          }
-          return {
-            id: doc.id,
+    // Fetch userTasks for submission review
+    const userTasksQuery = query(collection(db, 'userTasks'), where('status', '==', 'completed'));
+    const unsubscribeUserTasks = onSnapshot(userTasksQuery, async (snapshot) => {
+      const userTaskData = [];
+      for (const docSnap of snapshot.docs) {
+        const data = docSnap.data();
+        const taskDoc = await getDocs(query(collection(db, 'tasks'), where('__name__', '==', data.taskId)));
+        const userDoc = await getDoc(doc(db, 'users', data.userId));
+        if (!taskDoc.empty && userDoc.exists()) {
+          const taskDetails = taskDoc.docs[0].data();
+          userTaskData.push({
+            id: docSnap.id,
             ...data,
-            title: data.title || 'Untitled',
-            type: data.type || 'General',
-            payRate: Number(data.payRate) || 0,
-            status: data.status || 'open',
-            createdAt: data.createdAt || new Date().toISOString(),
-            assignedTo: data.assignedTo || null,
-            userId: SYSTEM_USER_ID, // Track the userId for reference
-          };
-        });
-        setTasks(taskData);
-        console.log('Tasks fetched:', taskData, `Count: ${taskData.length}`);
-        setLoading(false);
-      },
-      (err) => {
-        console.error('Error fetching tasks:', err);
-        toast.error('Failed to load tasks.');
-        setLoading(false);
+            taskTitle: taskDetails.title,
+            taskCategory: taskDetails.category,
+            paymentAmount: taskDetails.paymentAmount,
+            userName: userDoc.data().name,
+            userEmail: userDoc.data().email,
+          });
+        }
       }
-    );
+      setUserTasks(userTaskData);
+      console.log('UserTasks fetched:', userTaskData, `Count: ${userTaskData.length}`);
+    }, (err) => {
+      console.error('Error fetching userTasks:', err);
+      toast.error('Failed to load submissions.');
+    });
 
-    const applicationsQuery = query(collection(db, 'applications'));
-    const unsubscribeApplications = onSnapshot(
-      applicationsQuery,
-      (snapshot) => {
-        const appData = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-        setApplications(appData);
-        console.log('Applications fetched:', appData, `Count: ${appData.length}`);
-      },
-      (err) => {
-        console.error('Error fetching applications:', err);
-        toast.error('Failed to load applications.');
-      }
-    );
-
+    // Fetch users
     const usersQuery = query(collection(db, 'users'));
-    const unsubscribeUsers = onSnapshot(
-      usersQuery,
-      (snapshot) => {
-        const userData = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-        setUsers(userData);
-        console.log('Users fetched:', userData, `Count: ${userData.length}`);
-      },
-      (err) => {
-        console.error('Error fetching users:', err);
-        toast.error('Failed to load users.');
-      }
-    );
+    const unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
+      const userData = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        balance: Number(doc.data().balance) || 0,
+        thisMonthEarned: Number(doc.data().thisMonthEarned) || 0,
+      }));
+      setUsers(userData);
+      console.log('Users fetched:', userData, `Count: ${userData.length}`);
+    }, (err) => {
+      console.error('Error fetching users:', err);
+      toast.error('Failed to load users.');
+    });
 
     return () => {
-      unsubscribeUser();
       unsubscribeTasks();
-      unsubscribeApplications();
+      unsubscribeUserTasks();
       unsubscribeUsers();
     };
-  }, [currentUser]);
+  }, [currentUser, userRole, navigate]);
 
-  // Scroll modal into view when opened
+  // Scroll modal into view
   useEffect(() => {
     if (isCreateTaskOpen && modalRef.current) {
       modalRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -160,9 +137,8 @@ const AdminDashboard = () => {
   const validateForm = () => {
     const newTaskErrors = {};
     if (!newTask.title.trim()) newTaskErrors.title = 'Task title is required';
-    if (!newTask.description.trim()) newTaskErrors.description = 'Description is required';
-    if (!newTask.type) newTaskErrors.type = 'Category is required';
-    if (!newTask.payRate || newTask.payRate <= 0) newTaskErrors.payRate = 'Price must be greater than $0';
+    if (!newTask.category) newTaskErrors.category = 'Category is required';
+    if (!newTask.paymentAmount || newTask.paymentAmount <= 0) newTaskErrors.paymentAmount = 'Price must be greater than $0';
     if (!newTask.duration.trim()) newTaskErrors.duration = 'Duration is required';
     if (!newTask.difficulty) newTaskErrors.difficulty = 'Difficulty is required';
     if (!newTask.deadline) newTaskErrors.deadline = 'Deadline is required';
@@ -179,26 +155,23 @@ const AdminDashboard = () => {
     setIsSubmitting(true);
     try {
       const taskData = {
-        ...newTask,
-        payRate: Number(newTask.payRate),
-        status: 'open',
-        assignedTo: null,
-        visibility: 'public',
-        createdAt: new Date().toISOString(),
-        requirements: newTask.requirements
-          .split(',')
-          .map((req) => req.trim())
-          .filter((req) => req),
+        title: newTask.title,
+        category: newTask.category,
+        paymentAmount: Number(newTask.paymentAmount),
+        duration: newTask.duration,
+        difficulty: newTask.difficulty,
+        requirements: newTask.requirements.split(',').map(req => req.trim()).filter(req => req),
+        deadline: newTask.deadline,
+        zoomLink: newTask.zoomLink || '',
+        isActive: true,
+        createdAt: serverTimestamp(),
       };
-      const docRef = await withRetry(() =>
-        addDoc(collection(db, 'users', SYSTEM_USER_ID, 'tasks'), taskData)
-      );
+      const docRef = await withRetry(() => addDoc(collection(db, 'tasks'), taskData));
       console.log('Task created with ID:', docRef.id, taskData);
       setNewTask({
         title: '',
-        description: '',
-        type: '',
-        payRate: '',
+        category: '',
+        paymentAmount: '',
         duration: '',
         difficulty: '',
         requirements: '',
@@ -219,13 +192,13 @@ const AdminDashboard = () => {
   // Delete task
   const handleDeleteTask = async (taskId) => {
     try {
-      // Check for applications
-      const relatedApps = applications.filter((app) => app.taskId === taskId);
-      if (relatedApps.length > 0) {
-        toast.error('Cannot delete task with active applications.');
+      // Check for active userTasks
+      const relatedUserTasks = await getDocs(query(collection(db, 'userTasks'), where('taskId', '==', taskId)));
+      if (!relatedUserTasks.empty) {
+        toast.error('Cannot delete task with active or completed submissions.');
         return;
       }
-      await withRetry(() => deleteDoc(doc(db, 'users', SYSTEM_USER_ID, 'tasks', taskId)));
+      await withRetry(() => deleteDoc(doc(db, 'tasks', taskId)));
       console.log('Task deleted:', taskId);
       toast.success('Task deleted successfully!');
     } catch (error) {
@@ -234,213 +207,365 @@ const AdminDashboard = () => {
     }
   };
 
-  // Approve/reject application
-  const handleApplicationAction = async (appId, action) => {
+  // Approve/reject submission
+  const handleSubmissionAction = async (userTask, action) => {
     try {
-      const appRef = doc(db, 'applications', appId);
-      const app = applications.find((a) => a.id === appId);
-      if (!app) {
-        throw new Error('Application not found.');
-      }
-
-      // Update application status
-      await withRetry(() =>
-        updateDoc(appRef, {
-          status: action,
-          updatedAt: new Date().toISOString(),
-        })
-      );
-
-      // Update applicant's tasks subcollection
-      const userTasksQuery = query(
-        collection(db, 'users', app.userId, 'tasks'),
-        where('taskId', '==', app.taskId)
-      );
-      const userTasksSnapshot = await getDocs(userTasksQuery);
-      if (userTasksSnapshot.empty) {
-        console.warn(`No task entry found in users/${app.userId}/tasks for taskId: ${app.taskId}`);
-      } else {
-        userTasksSnapshot.forEach(async (taskDoc) => {
-          await withRetry(() =>
-            updateDoc(doc(db, 'users', app.userId, 'tasks', taskDoc.id), {
-              status: action,
-              updatedAt: new Date().toISOString(),
-            })
-          );
-          console.log(`Updated user task ${taskDoc.id} for user ${app.userId} to status: ${action}`);
-        });
-      }
-
-      // Update task status and assignedTo if approved
+      const userTaskRef = doc(db, 'userTasks', userTask.id);
       if (action === 'approved') {
-        const taskRef = doc(db, 'users', SYSTEM_USER_ID, 'tasks', app.taskId);
-        const task = tasks.find((t) => t.id === app.taskId);
-        if (!task) {
-          throw new Error('Task not found.');
-        }
-        if (task.status !== 'open') {
-          toast.error('Task is not open for assignment.');
-          return;
-        }
-        await withRetry(() =>
-          updateDoc(taskRef, {
-            status: 'in-progress',
-            assignedTo: app.userId,
-            updatedAt: new Date().toISOString(),
-          })
+        const userRef = doc(db, 'users', userTask.userId);
+        const userDoc = await getDoc(userRef);
+        const userData = userDoc.data();
+        await withRetry(() => updateDoc(userTaskRef, {
+          status: 'approved',
+          approvedAt: serverTimestamp(),
+          autoApproved: false,
+          reviewerId: currentUser.uid,
+          reviewNotes: 'Approved by admin',
+        }));
+        await withRetry(() => updateDoc(userRef, {
+          balance: (userData.balance || 0) + userTask.paymentAmount,
+          thisMonthEarned: (userData.thisMonthEarned || 0) + userTask.paymentAmount,
+          completedTasks: (userData.completedTasks || 0) + 1,
+          successRate: userData.appliedTasks > 0 
+            ? `${((userData.completedTasks + 1) / userData.appliedTasks * 100).toFixed(1)}%`
+            : '100%',
+        }));
+        const today = new Date().toISOString().split('T')[0];
+        const assignmentQuery = query(
+          collection(db, 'dailyTaskAssignments'),
+          where('userId', '==', userTask.userId),
+          where('date', '==', today),
+          limit(1)
         );
-        console.log(`Approved application ${appId} for task ${app.taskId}, assigned to ${app.userId}`);
+        const assignmentDocs = await getDocs(assignmentQuery);
+        if (!assignmentDocs.empty) {
+          const assignmentDoc = assignmentDocs.docs[0];
+          const assignmentData = assignmentDoc.data();
+          await withRetry(() => updateDoc(doc(db, 'dailyTaskAssignments', assignmentDoc.id), {
+            tasksCompleted: (assignmentData.tasksCompleted || 0) + 1,
+            earnings: (assignmentData.earnings || 0) + userTask.paymentAmount,
+          }));
+        }
+        toast.success(`Task "${userTask.taskTitle}" approved! $${userTask.paymentAmount} added to user balance.`);
       } else if (action === 'rejected') {
-        console.log(`Rejected application ${appId} for task ${app.taskId}`);
+        const reason = prompt('Enter rejection reason:');
+        if (!reason) return;
+        await withRetry(() => updateDoc(userTaskRef, {
+          status: 'rejected',
+          rejectionReason: reason,
+          reviewedAt: serverTimestamp(),
+          reviewerId: currentUser.uid,
+          autoApprovalScheduledAt: null,
+        }));
+        toast.success(`Task "${userTask.taskTitle}" rejected.`);
       }
-
-      toast.success(`Application ${action} successfully!`);
     } catch (error) {
-      console.error(`Error ${action} application:`, error);
-      toast.error(`Failed to ${action} application: ${error.message}`);
+      console.error(`Error ${action} submission:`, error);
+      toast.error(`Failed to ${action} submission: ${error.message}`);
     }
   };
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'open':
-        return 'bg-green-500';
-      case 'in-progress':
-      case 'approved':
-        return 'bg-blue-500';
-      case 'completed':
-        return 'bg-blue-600';
-      case 'pending':
-        return 'bg-yellow-500';
-      case 'rejected':
-        return 'bg-red-500';
-      case 'applied':
-        console.error(`Invalid task status: ${status}`);
-        return 'bg-red-600';
-      default:
-        console.warn(`Unexpected status: ${status}`);
-        return 'bg-gray-500';
+      case 'open': return 'bg-green-400/20 text-green-300 border-green-400/30';
+      case 'in-progress': case 'approved': return 'bg-blue-400/20 text-blue-300 border-blue-400/30';
+      case 'completed': return 'bg-blue-600/20 text-blue-300 border-blue-600/30';
+      case 'pending': return 'bg-yellow-400/20 text-yellow-300 border-yellow-400/30';
+      case 'rejected': return 'bg-red-400/20 text-red-300 border-red-400/30';
+      default: return 'bg-gray-400/20 text-gray-300 border-gray-400/30';
     }
   };
 
-  if (!isAdmin) {
-    return (
-      <div className="min-h-screen bg-gray-100">
-        <Header />
-        <div className="container mx-auto px-4 py-6">
-          <p className="text-center text-red-600">Access denied. Admins only.</p>
-        </div>
-        <Footer />
-      </div>
-    );
-  }
+  if (!currentUser || userRole !== 'admin') return null;
 
   return (
-    <>
-      <div className="min-h-screen bg-gray-100">
-        <header className="border-b bg-white">
-          <div className="container mx-auto px-4 py-4">
-            <div className="flex items-center justify-between">
-              <h1 className="text-2xl font-bold text-blue-600">Admin Dashboard</h1>
-              <button
-                className="bg-blue-600 text-white py-2 px-4 rounded-md flex items-center hover:bg-blue-700 transition-colors"
-                onClick={() => setIsCreateTaskOpen(true)}
-                aria-label="Create new task"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Create Task
-              </button>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900">
+      <header className="bg-white/10 backdrop-blur-xl border-b border-white/20 sticky top-0 z-40 shadow-lg">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex justify-between items-center">
+            <div>
+              <div className="flex items-center space-x-3 mb-1">
+                <h1 className="text-2xl font-black text-amber-400">Train2Earn</h1>
+                <span className="text-xs bg-amber-400/20 px-2 py-1 rounded-full text-amber-300 border border-amber-400/30">
+                  Admin Dashboard
+                </span>
+              </div>
+              <p className="text-sm text-blue-100">Welcome, Admin</p>
             </div>
+            <button
+              onClick={() => auth.signOut().then(() => navigate('/signin'))}
+              className="inline-flex items-center px-4 py-2 rounded-xl font-medium transition-all bg-white/10 text-white hover:bg-white/20 border border-white/20"
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              Sign Out
+            </button>
           </div>
-        </header>
+        </div>
+      </header>
 
-        <div className="container mx-auto px-4 py-6 relative">
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6 mb-8">
-            <div className="bg-white border rounded-lg p-6 shadow-sm">
-              <div className="flex items-center space-x-2">
-                <FileText className="h-8 w-8 text-blue-600" />
-                <div>
-                  <p className="text-sm text-gray-500">Total Tasks</p>
-                  <p className="text-2xl font-bold">{tasks.length}</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white border rounded-lg p-6 shadow-sm">
-              <div className="flex items-center space-x-2">
-                <Clock className="h-8 w-8 text-blue-600" />
-                <div>
-                  <p className="text-sm text-gray-500">Active Tasks</p>
-                  <p className="text-2xl font-bold">
-                    {tasks.filter((t) => t.status === 'in-progress').length}
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white border rounded-lg p-6 shadow-sm">
-              <div className="flex items-center space-x-2">
-                <Users className="h-8 w-8 text-blue-600" />
-                <div>
-                  <p className="text-sm text-gray-500">Total Users</p>
-                  <p className="text-2xl font-bold">{users.length}</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white border rounded-lg p-6 shadow-sm">
-              <div className="flex items-center space-x-2">
-                <DollarSign className="h-8 w-8 text-blue-600" />
-                <div>
-                  <p className="text-sm text-gray-500">Total Earnings</p>
-                  <p className="text-2xl font-bold">
-                    ${users.reduce((sum, user) => sum + (user.totalEarned || 0), 0).toLocaleString()}
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white border rounded-lg p-6 shadow-sm">
-              <div className="flex items-center space-x-2">
-                <TrendingUp className="h-8 w-8 text-blue-600" />
-                <div>
-                  <p className="text-sm text-gray-500">Pending Applications</p>
-                  <p className="text-2xl font-bold">
-                    {applications.filter((a) => a.status === 'pending').length}
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white border rounded-lg p-6 shadow-sm">
-              <div className="flex items-center space-x-2">
-                <CheckCircle className="h-8 w-8 text-blue-600" />
-                <div>
-                  <p className="text-sm text-gray-500">Completed Tasks</p>
-                  <p className="text-2xl font-bold">
-                    {tasks.filter((t) => t.status === 'completed').length}
-                  </p>
-                </div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+          <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-amber-400/20 p-6">
+            <div className="flex items-center space-x-3">
+              <FileText className="h-8 w-8 text-amber-400" />
+              <div>
+                <p className="text-sm text-blue-100">Total Tasks</p>
+                <p className="text-2xl font-black text-white">{tasks.length}</p>
               </div>
             </div>
           </div>
+          <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-amber-400/20 p-6">
+            <div className="flex items-center space-x-3">
+              <Clock className="h-8 w-8 text-amber-400" />
+              <div>
+                <p className="text-sm text-blue-100">Active Tasks</p>
+                <p className="text-2xl font-black text-white">
+                  {tasks.filter((t) => t.isActive).length}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-amber-400/20 p-6">
+            <div className="flex items-center space-x-3">
+              <Users className="h-8 w-8 text-amber-400" />
+              <div>
+                <p className="text-sm text-blue-100">Total Users</p>
+                <p className="text-2xl font-black text-white">{users.length}</p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-amber-400/20 p-6">
+            <div className="flex items-center space-x-3">
+              <DollarSign className="h-8 w-8 text-amber-400" />
+              <div>
+                <p className="text-sm text-blue-100">Total Earnings</p>
+                <p className="text-2xl font-black text-white">
+                  ${users.reduce((sum, user) => sum + (user.balance || 0), 0).toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-amber-400/20 p-6">
+            <div className="flex items-center space-x-3">
+              <TrendingUp className="h-8 w-8 text-amber-400" />
+              <div>
+                <p className="text-sm text-blue-100">Pending Submissions</p>
+                <p className="text-2xl font-black text-white">
+                  {userTasks.filter((t) => t.status === 'completed').length}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-amber-400/20 p-6">
+            <div className="flex items-center space-x-3">
+              <CheckCircle className="h-8 w-8 text-amber-400" />
+              <div>
+                <p className="text-sm text-blue-100">Completed Tasks</p>
+                <p className="text-2xl font-black text-white">
+                  {userTasks.filter((t) => t.status === 'approved').length}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
 
-          {/* Task Creation Modal */}
-          {isCreateTaskOpen && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center py-8 z-50">
-              <div
-                ref={modalRef}
-                className="bg-white rounded-lg p-6 sm:max-w-[600px] w-full mx-auto shadow-xl transform transition-all duration-300 scale-100 max-h-[calc(100vh-4rem)] overflow-y-auto"
-                role="dialog"
-                aria-labelledby="modal-title"
-              >
-                <div className="flex justify-between items-center mb-4">
-                  <h2 id="modal-title" className="text-xl font-bold text-gray-900">Create New Task</h2>
+        {/* Task Creation Modal */}
+        {isCreateTaskOpen && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center py-8 z-50">
+            <div
+              ref={modalRef}
+              className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-amber-400/20 p-6 max-w-[600px] w-full mx-auto max-h-[90vh] overflow-y-auto"
+              role="dialog"
+              aria-labelledby="modal-title"
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h2 id="modal-title" className="text-xl font-black text-white">Create New Task</h2>
+                <button
+                  className="text-blue-100 hover:text-amber-400"
+                  onClick={() => {
+                    setIsCreateTaskOpen(false);
+                    setNewTask({
+                      title: '',
+                      category: '',
+                      paymentAmount: '',
+                      duration: '',
+                      difficulty: '',
+                      requirements: '',
+                      deadline: '',
+                      zoomLink: '',
+                    });
+                    setErrors({});
+                  }}
+                  aria-label="Close modal"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <p className="text-sm text-blue-100 mb-6">Add a new task for users to work on.</p>
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="title" className="text-sm font-medium text-blue-100 block mb-1">
+                      Task Title <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      id="title"
+                      className={`w-full p-2 border rounded-xl bg-white/5 border-white/20 text-white placeholder-blue-200/50 focus:ring-2 focus:ring-amber-400 ${errors.title ? 'border-red-400' : ''}`}
+                      placeholder="Enter task title"
+                      value={newTask.title}
+                      onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+                      required
+                      aria-invalid={errors.title ? 'true' : 'false'}
+                      aria-describedby={errors.title ? 'title-error' : undefined}
+                    />
+                    {errors.title && (
+                      <p id="title-error" className="text-red-400 text-xs mt-1">{errors.title}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label htmlFor="category" className="text-sm font-medium text-blue-100 block mb-1">
+                      Category <span className="text-red-400">*</span>
+                    </label>
+                    <select
+                      id="category"
+                      className={`w-full p-2 border rounded-xl bg-white/5 border-white/20 text-white focus:ring-2 focus:ring-amber-400 ${errors.category ? 'border-red-400' : ''}`}
+                      value={newTask.category}
+                      onChange={(e) => setNewTask({ ...newTask, category: e.target.value })}
+                      required
+                      aria-invalid={errors.category ? 'true' : 'false'}
+                      aria-describedby={errors.category ? 'category-error' : undefined}
+                    >
+                      <option value="">Select category</option>
+                      <option value="Translation">Translation</option>
+                      <option value="Content Writing">Content Writing</option>
+                      <option value="Data Labeling">Data Labeling</option>
+                      <option value="Image Classification">Image Classification</option>
+                    </select>
+                    {errors.category && (
+                      <p id="category-error" className="text-red-400 text-xs mt-1">{errors.category}</p>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label htmlFor="paymentAmount" className="text-sm font-medium text-blue-100 block mb-1">
+                    Price ($) <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    id="paymentAmount"
+                    type="number"
+                    min="1"
+                    className={`w-full p-2 border rounded-xl bg-white/5 border-white/20 text-white placeholder-blue-200/50 focus:ring-2 focus:ring-amber-400 ${errors.paymentAmount ? 'border-red-400' : ''}`}
+                    placeholder="15"
+                    value={newTask.paymentAmount}
+                    onChange={(e) => setNewTask({ ...newTask, paymentAmount: e.target.value })}
+                    required
+                    aria-invalid={errors.paymentAmount ? 'true' : 'false'}
+                    aria-describedby={errors.paymentAmount ? 'paymentAmount-error' : undefined}
+                  />
+                  {errors.paymentAmount && (
+                    <p id="paymentAmount-error" className="text-red-400 text-xs mt-1">{errors.paymentAmount}</p>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="duration" className="text-sm font-medium text-blue-100 block mb-1">
+                      Duration <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      id="duration"
+                      className={`w-full p-2 border rounded-xl bg-white/5 border-white/20 text-white placeholder-blue-200/50 focus:ring-2 focus:ring-amber-400 ${errors.duration ? 'border-red-400' : ''}`}
+                      placeholder="2-3 hours"
+                      value={newTask.duration}
+                      onChange={(e) => setNewTask({ ...newTask, duration: e.target.value })}
+                      required
+                      aria-invalid={errors.duration ? 'true' : 'false'}
+                      aria-describedby={errors.duration ? 'duration-error' : undefined}
+                    />
+                    {errors.duration && (
+                      <p id="duration-error" className="text-red-400 text-xs mt-1">{errors.duration}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label htmlFor="difficulty" className="text-sm font-medium text-blue-100 block mb-1">
+                      Difficulty <span className="text-red-400">*</span>
+                    </label>
+                    <select
+                      id="difficulty"
+                      className={`w-full p-2 border rounded-xl bg-white/5 border-white/20 text-white focus:ring-2 focus:ring-amber-400 ${errors.difficulty ? 'border-red-400' : ''}`}
+                      value={newTask.difficulty}
+                      onChange={(e) => setNewTask({ ...newTask, difficulty: e.target.value })}
+                      required
+                      aria-invalid={errors.difficulty ? 'true' : 'false'}
+                      aria-describedby={errors.difficulty ? 'difficulty-error' : undefined}
+                    >
+                      <option value="">Select difficulty</option>
+                      <option value="Beginner">Beginner</option>
+                      <option value="Intermediate">Intermediate</option>
+                      <option value="Advanced">Advanced</option>
+                    </select>
+                    {errors.difficulty && (
+                      <p id="difficulty-error" className="text-red-400 text-xs mt-1">{errors.difficulty}</p>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label htmlFor="requirements" className="text-sm font-medium text-blue-100 block mb-1">
+                    Requirements (comma-separated)
+                  </label>
+                  <input
+                    id="requirements"
+                    className="w-full p-2 border rounded-xl bg-white/5 border-white/20 text-white placeholder-blue-200/50 focus:ring-2 focus:ring-amber-400"
+                    placeholder="Native speaker, Experience with..."
+                    value={newTask.requirements}
+                    onChange={(e) => setNewTask({ ...newTask, requirements: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="deadline" className="text-sm font-medium text-blue-100 block mb-1">
+                    Deadline <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    id="deadline"
+                    type="date"
+                    className={`w-full p-2 border rounded-xl bg-white/5 border-white/20 text-white focus:ring-2 focus:ring-amber-400 ${errors.deadline ? 'border-red-400' : ''}`}
+                    value={newTask.deadline}
+                    onChange={(e) => setNewTask({ ...newTask, deadline: e.target.value })}
+                    required
+                    aria-invalid={errors.deadline ? 'true' : 'false'}
+                    aria-describedby={errors.deadline ? 'deadline-error' : undefined}
+                    min={new Date().toISOString().split('T')[0]}
+                  />
+                  {errors.deadline && (
+                    <p id="deadline-error" className="text-red-400 text-xs mt-1">{errors.deadline}</p>
+                  )}
+                </div>
+                <div>
+                  <label htmlFor="zoomLink" className="text-sm font-medium text-blue-100 block mb-1">
+                    Zoom Link (Optional)
+                  </label>
+                  <input
+                    id="zoomLink"
+                    className={`w-full p-2 border rounded-xl bg-white/5 border-white/20 text-white placeholder-blue-200/50 focus:ring-2 focus:ring-amber-400 ${errors.zoomLink ? 'border-red-400' : ''}`}
+                    placeholder="https://zoom.us/j/..."
+                    value={newTask.zoomLink}
+                    onChange={(e) => setNewTask({ ...newTask, zoomLink: e.target.value })}
+                    aria-invalid={errors.zoomLink ? 'true' : 'false'}
+                    aria-describedby={errors.zoomLink ? 'zoomLink-error' : undefined}
+                  />
+                  {errors.zoomLink && (
+                    <p id="zoomLink-error" className="text-red-400 text-xs mt-1">{errors.zoomLink}</p>
+                  )}
+                </div>
+                <div className="flex justify-end space-x-2">
                   <button
-                    className="text-gray-500 hover:text-gray-700"
+                    className="px-4 py-2 rounded-xl bg-white/10 text-white hover:bg-white/20 border border-white/20 transition-all"
                     onClick={() => {
                       setIsCreateTaskOpen(false);
                       setNewTask({
                         title: '',
-                        description: '',
-                        type: '',
-                        payRate: '',
+                        category: '',
+                        paymentAmount: '',
                         duration: '',
                         difficulty: '',
                         requirements: '',
@@ -449,501 +574,255 @@ const AdminDashboard = () => {
                       });
                       setErrors({});
                     }}
-                    aria-label="Close modal"
+                    disabled={isSubmitting}
+                    aria-label="Cancel task creation"
                   >
-                    <X className="h-5 w-5" />
+                    Cancel
+                  </button>
+                  <button
+                    className={`px-4 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 text-slate-900 hover:shadow-xl transform hover:scale-[1.02] transition-all ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    onClick={handleCreateTask}
+                    disabled={isSubmitting}
+                    aria-label={isSubmitting ? 'Creating task...' : 'Create task'}
+                  >
+                    {isSubmitting ? (
+                      <span className="flex items-center space-x-2">
+                        <svg className="animate-spin h-5 w-5 text-slate-900" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        <span>Creating...</span>
+                      </span>
+                    ) : (
+                      'Create Task'
+                    )}
                   </button>
                 </div>
-                <p className="text-sm text-gray-500 mb-6">Add a new task for freelancers to work on.</p>
-                <div className="space-y-6">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label htmlFor="title" className="text-sm font-medium text-gray-700 block mb-1">
-                        Task Title <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        id="title"
-                        className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.title ? 'border-red-500' : 'border-gray-300'}`}
-                        placeholder="Enter task title"
-                        value={newTask.title}
-                        onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                        required
-                        aria-invalid={errors.title ? 'true' : 'false'}
-                        aria-describedby={errors.title ? 'title-error' : undefined}
-                      />
-                      {errors.title && (
-                        <p id="title-error" className="text-red-500 text-xs mt-1">{errors.title}</p>
-                      )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tabs */}
+        <div className="space-y-6">
+          <div className="flex border-b border-white/20">
+            {['tasks', 'submissions', 'users', 'analytics'].map((tab) => (
+              <button
+                key={tab}
+                className={`px-4 py-2 font-medium text-sm ${categoryFilter === tab ? 'border-b-2 border-amber-400 text-amber-400' : 'text-blue-100 hover:text-amber-400'}`}
+                onClick={() => setCategoryFilter(tab)}
+                aria-label={`View ${tab} section`}
+              >
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          {categoryFilter === 'tasks' && (
+            <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-amber-400/20 p-6">
+              <div className="flex justify-between items-center mb-4">
+                <div>
+                  <h2 className="text-lg font-black text-white">Task Management</h2>
+                  <p className="text-sm text-blue-100">Manage all tasks and their status</p>
+                </div>
+                <button
+                  className="inline-flex items-center px-4 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 text-slate-900 hover:shadow-xl transform hover:scale-[1.02] transition-all"
+                  onClick={() => setIsCreateTaskOpen(true)}
+                  aria-label="Create new task"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Task
+                </button>
+              </div>
+              {loading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {[...Array(6)].map((_, i) => <Skeleton key={i} height={200} className="rounded-2xl" />)}
+                </div>
+              ) : tasks.length === 0 ? (
+                <div className="text-center py-12">
+                  <FileText className="w-12 h-12 mx-auto mb-4 text-blue-300" />
+                  <p className="text-blue-100">No tasks available.</p>
+                  <button
+                    className="mt-4 inline-flex items-center px-4 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 text-slate-900"
+                    onClick={() => setIsCreateTaskOpen(true)}
+                    aria-label="Create a new task"
+                  >
+                    Create a Task
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {tasks.map((task) => (
+                    <div key={task.id} className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-5 hover:bg-white/10 hover:border-amber-400/30 transition-all">
+                      <div className="flex items-start justify-between mb-3">
+                        <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-blue-400/20 text-blue-300 border border-blue-400/30">
+                          {task.category}
+                        </span>
+                        <span className="text-lg font-black text-amber-400">${task.paymentAmount}</span>
+                      </div>
+                      <h3 className="text-base font-bold mb-2 text-white">{task.title}</h3>
+                      <p className="text-sm mb-2 text-blue-100">Status: <span className={`inline-flex px-2 py-1 rounded text-xs font-medium ${getStatusColor(task.isActive ? 'open' : 'closed')}`}>{task.isActive ? 'Open' : 'Closed'}</span></p>
+                      <p className="text-sm mb-4 text-blue-100">Created: {task.createdAt.split('T')[0]}</p>
+                      <div className="flex space-x-2">
+                        <button
+                          className="px-3 py-1 rounded-xl bg-white/10 text-white hover:bg-white/20 border border-white/20"
+                          aria-label={`Edit task ${task.title}`}
+                          disabled // TODO: Implement edit functionality
+                        >
+                          <Edit className="h-4 w-4" />
+                        </button>
+                        <button
+                          className="px-3 py-1 rounded-xl bg-white/10 text-white hover:bg-white/20 border border-white/20"
+                          onClick={() => handleDeleteTask(task.id)}
+                          aria-label={`Delete task ${task.title}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
-                    <div>
-                      <label htmlFor="type" className="text-sm font-medium text-gray-700 block mb-1">
-                        Category <span className="text-red-500">*</span>
-                      </label>
-                      <select
-                        id="type"
-                        className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.type ? 'border-red-500' : 'border-gray-300'}`}
-                        value={newTask.type}
-                        onChange={(e) => setNewTask({ ...newTask, type: e.target.value })}
-                        required
-                        aria-invalid={errors.type ? 'true' : 'false'}
-                        aria-describedby={errors.type ? 'type-error' : undefined}
-                      >
-                        <option value="">Select category</option>
-                        <option value="Translation">Translation</option>
-                        <option value="Content Writing">Content Writing</option>
-                        <option value="Graphic Design">Graphic Design</option>
-                        <option value="Data Entry">Data Entry</option>
-                        <option value="Web Development">Web Development</option>
-                      </select>
-                      {errors.type && (
-                        <p id="type-error" className="text-red-500 text-xs mt-1">{errors.type}</p>
-                      )}
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {categoryFilter === 'submissions' && (
+            <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-amber-400/20 p-6">
+              <h2 className="text-lg font-black text-white mb-2">Submission Review</h2>
+              <p className="text-sm text-blue-100 mb-4">Review and approve/reject user submissions</p>
+              {loading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {[...Array(6)].map((_, i) => <Skeleton key={i} height={200} className="rounded-2xl" />)}
+                </div>
+              ) : userTasks.length === 0 ? (
+                <div className="text-center py-12">
+                  <Clock className="w-12 h-12 mx-auto mb-4 text-blue-300" />
+                  <p className="text-blue-100">No submissions pending review</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {userTasks.map((task) => (
+                    <div key={task.id} className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-5 hover:bg-white/10 hover:border-amber-400/30 transition-all">
+                      <div className="flex items-start justify-between mb-3">
+                        <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-blue-400/20 text-blue-300 border border-blue-400/30">
+                          {task.taskCategory}
+                        </span>
+                        <span className="text-lg font-black text-amber-400">${task.paymentAmount}</span>
+                      </div>
+                      <h3 className="text-base font-bold mb-2 text-white">{task.taskTitle}</h3>
+                      <p className="text-sm mb-2 text-blue-100">Submitted by: {task.userName} ({task.userEmail})</p>
+                      <p className="text-sm mb-4 text-blue-100">
+                        Submitted: {task.completedAt ? new Date(task.completedAt.toDate()).toLocaleString() : 'N/A'}
+                      </p>
+                      <div className="mb-4">
+                        <p className="text-sm font-semibold text-blue-100 mb-2">Submission Details:</p>
+                        {Object.entries(task.submissionData || {}).map(([qId, data]) => (
+                          <div key={qId} className="mb-2">
+                            <p className="text-xs text-blue-200">Q{qId}: {data.type === 'file' ? data.fileName : data.answer}</p>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex space-x-3">
+                        <button
+                          onClick={() => handleSubmissionAction(task, 'approved')}
+                          className="flex-1 font-bold py-2 px-4 rounded-xl bg-gradient-to-r from-green-400 to-green-500 text-slate-900 hover:shadow-lg transform hover:scale-[1.02] transition-all"
+                        >
+                          <CheckCircle className="w-4 h-4 inline mr-2" />
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleSubmissionAction(task, 'rejected')}
+                          className="flex-1 font-bold py-2 px-4 rounded-xl bg-gradient-to-r from-red-400 to-red-500 text-slate-900 hover:shadow-lg transform hover:scale-[1.02] transition-all"
+                        >
+                          <XCircle className="w-4 h-4 inline mr-2" />
+                          Reject
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                  <div>
-                    <label htmlFor="description" className="text-sm font-medium text-gray-700 block mb-1">
-                      Description <span className="text-red-500">*</span>
-                    </label>
-                    <textarea
-                      id="description"
-                      className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.description ? 'border-red-500' : 'border-gray-300'}`}
-                      placeholder="Detailed task description"
-                      value={newTask.description}
-                      onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
-                      rows="4"
-                      required
-                      aria-invalid={errors.description ? 'true' : 'false'}
-                      aria-describedby={errors.description ? 'description-error' : undefined}
-                    />
-                    {errors.description && (
-                      <p id="description-error" className="text-red-500 text-xs mt-1">{errors.description}</p>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <label htmlFor="payRate" className="text-sm font-medium text-gray-700 block mb-1">
-                        Price ($) <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        id="payRate"
-                        type="number"
-                        min="1"
-                        className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.payRate ? 'border-red-500' : 'border-gray-300'}`}
-                        placeholder="15"
-                        value={newTask.payRate}
-                        onChange={(e) => setNewTask({ ...newTask, payRate: e.target.value })}
-                        required
-                        aria-invalid={errors.payRate ? 'true' : 'false'}
-                        aria-describedby={errors.payRate ? 'payRate-error' : undefined}
-                      />
-                      {errors.payRate && (
-                        <p id="payRate-error" className="text-red-500 text-xs mt-1">{errors.payRate}</p>
-                      )}
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {categoryFilter === 'users' && (
+            <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-amber-400/20 p-6">
+              <h2 className="text-lg font-black text-white mb-2">User Management</h2>
+              <p className="text-sm text-blue-100 mb-4">Manage registered users and their performance</p>
+              {loading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {[...Array(6)].map((_, i) => <Skeleton key={i} height={200} className="rounded-2xl" />)}
+                </div>
+              ) : users.length === 0 ? (
+                <div className="text-center py-12">
+                  <Users className="w-12 h-12 mx-auto mb-4 text-blue-300" />
+                  <p className="text-blue-100">No users registered.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {users.map((user) => (
+                    <div key={user.id} className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-5 hover:bg-white/10 hover:border-amber-400/30 transition-all">
+                      <h3 className="text-base font-bold mb-2 text-white">{user.name || 'N/A'}</h3>
+                      <p className="text-sm mb-2 text-blue-100">Email: {user.email}</p>
+                      <p className="text-sm mb-2 text-blue-100">Completed Tasks: {user.completedTasks || 0}</p>
+                      <p className="text-sm mb-2 text-blue-100">Success Rate: {user.successRate || '0%'}</p>
+                      <p className="text-sm mb-2 text-blue-100">Balance: ${user.balance || 0}</p>
+                      <p className="text-sm text-blue-100">Joined: {user.createdAt ? new Date(user.createdAt.toDate()).toLocaleDateString() : 'N/A'}</p>
                     </div>
-                    <div>
-                      <label htmlFor="duration" className="text-sm font-medium text-gray-700 block mb-1">
-                        Duration <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        id="duration"
-                        className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.duration ? 'border-red-500' : 'border-gray-300'}`}
-                        placeholder="2-3 hours"
-                        value={newTask.duration}
-                        onChange={(e) => setNewTask({ ...newTask, duration: e.target.value })}
-                        required
-                        aria-invalid={errors.duration ? 'true' : 'false'}
-                        aria-describedby={errors.duration ? 'duration-error' : undefined}
-                      />
-                      {errors.duration && (
-                        <p id="duration-error" className="text-red-500 text-xs mt-1">{errors.duration}</p>
-                      )}
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {categoryFilter === 'analytics' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-amber-400/20 p-6">
+                <h2 className="text-lg font-black text-white mb-2">Revenue Analytics</h2>
+                <p className="text-3xl font-black text-amber-400 mb-2">
+                  ${users.reduce((sum, user) => sum + (user.balance || 0), 0).toLocaleString()}
+                </p>
+                <p className="text-sm text-blue-100 mb-4">Total platform earnings</p>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm text-blue-100">
+                    <span>This Month</span>
+                    <span className="font-semibold">${users.reduce((sum, user) => sum + (user.thisMonthEarned || 0), 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-blue-100">
+                    <span>Last Month</span>
+                    <span className="font-semibold">${users.reduce((sum, user) => sum + (user.lastMonthEarned || 0), 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-green-400">
+                    <span>Growth</span>
+                    <span className="font-semibold">
+                      {(() => {
+                        const thisMonth = users.reduce((sum, user) => sum + (user.thisMonthEarned || 0), 0);
+                        const lastMonth = users.reduce((sum, user) => sum + (user.lastMonthEarned || 0), 0);
+                        return lastMonth > 0 ? `${((thisMonth - lastMonth) / lastMonth * 100).toFixed(1)}%` : 'N/A';
+                      })()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-amber-400/20 p-6">
+                <h2 className="text-lg font-black text-white mb-2">Task Categories</h2>
+                <div className="space-y-4">
+                  {['Translation', 'Content Writing', 'Data Labeling', 'Image Classification'].map((cat) => (
+                    <div key={cat} className="flex justify-between items-center text-blue-100">
+                      <span>{cat}</span>
+                      <span className="font-semibold">
+                        {Math.round((tasks.filter((t) => t.category === cat).length / (tasks.length || 1)) * 100)}%
+                      </span>
                     </div>
-                    <div>
-                      <label htmlFor="difficulty" className="text-sm font-medium text-gray-700 block mb-1">
-                        Difficulty <span className="text-red-500">*</span>
-                      </label>
-                      <select
-                        id="difficulty"
-                        className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.difficulty ? 'border-red-500' : 'border-gray-300'}`}
-                        value={newTask.difficulty}
-                        onChange={(e) => setNewTask({ ...newTask, difficulty: e.target.value })}
-                        required
-                        aria-invalid={errors.difficulty ? 'true' : 'false'}
-                        aria-describedby={errors.difficulty ? 'difficulty-error' : undefined}
-                      >
-                        <option value="">Select difficulty</option>
-                        <option value="Beginner">Beginner</option>
-                        <option value="Intermediate">Intermediate</option>
-                        <option value="Advanced">Advanced</option>
-                      </select>
-                      {errors.difficulty && (
-                        <p id="difficulty-error" className="text-red-500 text-xs mt-1">{errors.difficulty}</p>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <label htmlFor="requirements" className="text-sm font-medium text-gray-700 block mb-1">
-                      Requirements (comma-separated)
-                    </label>
-                    <input
-                      id="requirements"
-                      className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 border-gray-300"
-                      placeholder="Native speaker, Experience with..."
-                      value={newTask.requirements}
-                      onChange={(e) => setNewTask({ ...newTask, requirements: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="deadline" className="text-sm font-medium text-gray-700 block mb-1">
-                      Deadline <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      id="deadline"
-                      type="date"
-                      className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.deadline ? 'border-red-500' : 'border-gray-300'}`}
-                      value={newTask.deadline}
-                      onChange={(e) => setNewTask({ ...newTask, deadline: e.target.value })}
-                      required
-                      aria-invalid={errors.deadline ? 'true' : 'false'}
-                      aria-describedby={errors.deadline ? 'deadline-error' : undefined}
-                      min={new Date().toISOString().split('T')[0]}
-                    />
-                    {errors.deadline && (
-                      <p id="deadline-error" className="text-red-500 text-xs mt-1">{errors.deadline}</p>
-                    )}
-                  </div>
-                  <div>
-                    <label htmlFor="zoomLink" className="text-sm font-medium text-gray-700 block mb-1">
-                      Zoom Link (Optional)
-                    </label>
-                    <input
-                      id="zoomLink"
-                      className={`w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.zoomLink ? 'border-red-500' : 'border-gray-300'}`}
-                      placeholder="https://zoom.us/j/..."
-                      value={newTask.zoomLink}
-                      onChange={(e) => setNewTask({ ...newTask, zoomLink: e.target.value })}
-                      aria-invalid={errors.zoomLink ? 'true' : 'false'}
-                      aria-describedby={errors.zoomLink ? 'zoomLink-error' : undefined}
-                    />
-                    {errors.zoomLink && (
-                      <p id="zoomLink-error" className="text-red-500 text-xs mt-1">{errors.zoomLink}</p>
-                    )}
-                  </div>
-                  <div className="flex justify-end space-x-2">
-                    <button
-                      className="border border-gray-300 rounded-md px-4 py-2 hover:bg-gray-100 transition-colors"
-                      onClick={() => {
-                        setIsCreateTaskOpen(false);
-                        setNewTask({
-                          title: '',
-                          description: '',
-                          type: '',
-                          payRate: '',
-                          duration: '',
-                          difficulty: '',
-                          requirements: '',
-                          deadline: '',
-                          zoomLink: '',
-                        });
-                        setErrors({});
-                      }}
-                      disabled={isSubmitting}
-                      aria-label="Cancel task creation"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      className={`bg-blue-600 text-white rounded-md px-4 py-2 hover:bg-blue-700 transition-colors flex items-center ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      onClick={handleCreateTask}
-                      disabled={isSubmitting}
-                      aria-label={isSubmitting ? 'Creating task...' : 'Create task'}
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <svg className="animate-spin h-5 w-5 mr-2 text-white" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                          </svg>
-                          Creating...
-                        </>
-                      ) : (
-                        'Create Task'
-                      )}
-                    </button>
-                  </div>
+                  ))}
                 </div>
               </div>
             </div>
           )}
-
-          {/* Tabs */}
-          <div className="space-y-6">
-            <div className="flex border-b">
-              <button
-                className={`px-4 py-2 font-medium ${categoryFilter === 'tasks' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`}
-                onClick={() => setCategoryFilter('tasks')}
-                aria-label="View task management"
-              >
-                Task Management
-              </button>
-              <button
-                className={`px-4 py-2 font-medium ${categoryFilter === 'applications' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`}
-                onClick={() => setCategoryFilter('applications')}
-                aria-label="View applications"
-              >
-                Applications
-              </button>
-              <button
-                className={`px-4 py-2 font-medium ${categoryFilter === 'users' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`}
-                onClick={() => setCategoryFilter('users')}
-                aria-label="View user management"
-              >
-                User Management
-              </button>
-              <button
-                className={`px-4 py-2 font-medium ${categoryFilter === 'analytics' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`}
-                onClick={() => setCategoryFilter('analytics')}
-                aria-label="View analytics"
-              >
-                Analytics
-              </button>
-            </div>
-
-            {categoryFilter === 'tasks' && (
-              <div className="bg-white border rounded-lg p-6 shadow-sm">
-                <h2 className="text-lg font-semibold mb-2">Task Management</h2>
-                <p className="text-sm text-gray-500 mb-4">Manage all tasks and their status</p>
-                {loading ? (
-                  <div className="space-y-4">
-                    <Skeleton height={40} count={5} />
-                  </div>
-                ) : tasks.length === 0 ? (
-                  <div className="text-center py-8">
-                    <p className="text-gray-500">No tasks available.</p>
-                    <button
-                      className="mt-4 bg-blue-600 text-white rounded-md px-4 py-2"
-                      onClick={() => setIsCreateTaskOpen(true)}
-                      aria-label="Create a new task"
-                    >
-                      Create a Task
-                    </button>
-                  </div>
-                ) : (
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-gray-100">
-                        <th className="p-3 text-left">Title</th>
-                        <th className="p-3 text-left">Category</th>
-                        <th className="p-3 text-left">Price</th>
-                        <th className="p-3 text-left">Applicants</th>
-                        <th className="p-3 text-left">Status</th>
-                        <th className="p-3 text-left">Created</th>
-                        <th className="p-3 text-left">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tasks.map((task) => (
-                        <tr key={task.id} className="border-t">
-                          <td className="p-3 font-medium">{task.title}</td>
-                          <td className="p-3">{task.type}</td>
-                          <td className="p-3">${task.payRate}</td>
-                          <td className="p-3">
-                            {applications.filter((a) => a.taskId === task.id).length}
-                          </td>
-                          <td className="p-3">
-                            <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium text-white ${getStatusColor(task.status)}`}>
-                              {task.status}
-                            </span>
-                          </td>
-                          <td className="p-3">{task.createdAt.split('T')[0]}</td>
-                          <td className="p-3">
-                            <div className="flex space-x-2">
-                              <button
-                                className="border border-gray-300 rounded-md p-2 hover:bg-gray-100"
-                                aria-label={`Edit task ${task.title}`}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </button>
-                              <button
-                                className="border border-gray-300 rounded-md p-2 hover:bg-gray-100"
-                                onClick={() => handleDeleteTask(task.id)}
-                                aria-label={`Delete task ${task.title}`}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            )}
-
-            {categoryFilter === 'applications' && (
-              <div className="bg-white border rounded-lg p-6 shadow-sm">
-                <h2 className="text-lg font-semibold mb-2">Task Applications</h2>
-                <p className="text-sm text-gray-500 mb-4">Review and manage user applications</p>
-                {loading ? (
-                  <div className="space-y-4">
-                    <Skeleton height={40} count={5} />
-                  </div>
-                ) : applications.length === 0 ? (
-                  <div className="text-center py-8">
-                    <p className="text-gray-500">No applications available.</p>
-                  </div>
-                ) : (
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-gray-100">
-                        <th className="p-3 text-left">Task</th>
-                        <th className="p-3 text-left">User</th>
-                        <th className="p-3 text-left">Email</th>
-                        <th className="p-3 text-left">Experience</th>
-                        <th className="p-3 text-left">Status</th>
-                        <th className="p-3 text-left">Applied</th>
-                        <th className="p-3 text-left">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {applications.map((app) => (
-                        <tr key={app.id} className="border-t">
-                          <td className="p-3 font-medium">{app.taskTitle}</td>
-                          <td className="p-3">{app.userName}</td>
-                          <td className="p-3">{app.userEmail}</td>
-                          <td className="p-3">{app.experience}</td>
-                          <td className="p-3">
-                            <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium text-white ${getStatusColor(app.status)}`}>
-                              {app.status}
-                            </span>
-                          </td>
-                          <td className="p-3">{app.appliedAt.split('T')[0]}</td>
-                          <td className="p-3">
-                            {app.status === 'pending' && (
-                              <div className="flex space-x-2">
-                                <button
-                                  className="border border-gray-300 rounded-md p-2 hover:bg-gray-100"
-                                  onClick={() => handleApplicationAction(app.id, 'approved')}
-                                  aria-label={`Approve application for ${app.taskTitle}`}
-                                >
-                                  <CheckCircle className="h-4 w-4" />
-                                </button>
-                                <button
-                                  className="border border-gray-300 rounded-md p-2 hover:bg-gray-100"
-                                  onClick={() => handleApplicationAction(app.id, 'rejected')}
-                                  aria-label={`Reject application for ${app.taskTitle}`}
-                                >
-                                  <XCircle className="h-4 w-4" />
-                                </button>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            )}
-
-            {categoryFilter === 'users' && (
-              <div className="bg-white border rounded-lg p-6 shadow-sm">
-                <h2 className="text-lg font-semibold mb-2">User Management</h2>
-                <p className="text-sm text-gray-500 mb-4">Manage registered users and their performance</p>
-                {loading ? (
-                  <div className="space-y-4">
-                    <Skeleton height={40} count={5} />
-                  </div>
-                ) : users.length === 0 ? (
-                  <div className="text-center py-8">
-                    <p className="text-gray-500">No users registered.</p>
-                  </div>
-                ) : (
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-gray-100">
-                        <th className="p-3 text-left">Name</th>
-                        <th className="p-3 text-left">Email</th>
-                        <th className="p-3 text-left">Completed Tasks</th>
-                        <th className="p-3 text-left">Success Rate</th>
-                        <th className="p-3 text-left">Total Earned</th>
-                        <th className="p-3 text-left">Joined</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {users.map((user) => (
-                        <tr key={user.id} className="border-t">
-                          <td className="p-3 font-medium">{user.name || 'N/A'}</td>
-                          <td className="p-3">{user.email}</td>
-                          <td className="p-3">{user.completedTasks || 0}</td>
-                          <td className="p-3">{user.successRate || '0%'}</td>
-                          <td className="p-3">${user.totalEarned || 0}</td>
-                          <td className="p-3">{user.createdAt ? user.createdAt.split('T')[0] : 'N/A'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            )}
-
-            {categoryFilter === 'analytics' && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-white border rounded-lg p-6 shadow-sm">
-                  <h2 className="text-lg font-semibold mb-2">Revenue Analytics</h2>
-                  <div className="text-3xl font-bold text-blue-600 mb-2">
-                    ${users.reduce((sum, user) => sum + (user.totalEarned || 0), 0).toLocaleString()}
-                  </div>
-                  <p className="text-sm text-gray-500 mb-4">Total platform earnings</p>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>This Month</span>
-                      <span className="font-semibold">
-                        ${users.reduce((sum, user) => sum + (user.thisMonthEarned || 0), 0)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span>Last Month</span>
-                      <span className="font-semibold">
-                        ${users.reduce((sum, user) => sum + (user.lastMonthEarned || 0), 0)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-sm text-green-600">
-                      <span>Growth</span>
-                      <span className="font-semibold">+12.1%</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-white border rounded-lg p-6 shadow-sm">
-                  <h2 className="text-lg font-semibold mb-2">Task Categories</h2>
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <span>Translation Tasks</span>
-                      <span className="font-semibold">
-                        {Math.round(
-                          (tasks.filter((t) => t.type === 'Translation').length / (tasks.length || 1)) * 100
-                        )}%
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span>Content Writing</span>
-                      <span className="font-semibold">
-                        {Math.round(
-                          (tasks.filter((t) => t.type === 'Content Writing').length / (tasks.length || 1)) * 100
-                        )}%
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
         </div>
-        <ToastContainer position="top-right" autoClose={3000} />
       </div>
-      <Footer />
-    </>
+      <ToastContainer position="bottom-right" theme="dark" autoClose={3000} />
+    </div>
   );
 };
 
