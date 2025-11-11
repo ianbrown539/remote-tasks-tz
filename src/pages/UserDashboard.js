@@ -225,7 +225,7 @@ const UserDashboard = () => {
     new Date(t.startedAt).toDateString() === new Date().toDateString()
   );
 
-  const activeCount = todayTasks.filter(t => t.status === 'in-progress').length;
+  // const activeCount = todayTasks.filter(t => t.status === 'in-progress').length;
   const completedCount = todayTasks.filter(t => t.status === 'completed').length;
   const approvedCount = todayTasks.filter(t => t.status === 'approved').length;
   const todayEarnings = todayTasks.filter(t => t.status === 'approved').reduce((sum, t) => sum + t.paymentAmount, 0);

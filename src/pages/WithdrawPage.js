@@ -19,9 +19,9 @@ function formatKES(amount) {
   return `Ksh.${(amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
 }
 
-function formatUSD(amount) {
-  return `($${amount.toFixed(2)} USD)`;
-}
+// function formatUSD(amount) {
+//   return `($${amount.toFixed(2)} USD)`;
+// }
 
 function WithdrawPage() {
   const [userData, setUserData] = useState(null);
@@ -148,19 +148,24 @@ function WithdrawPage() {
   };
 
   const getStatusBadge = (status) => {
-    const config = {
-      pending: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: Clock, label: 'Pending' },
-      completed: { bg: 'bg-green-100', text: 'text-green-700', icon: CheckCircle, label: 'Completed' },
-      failed: { bg: 'bg-red-100', text: 'text-red-700', icon: XCircle, label: 'Failed' }
-    }[status] || config.pending;
-    const Icon = config.icon;
-    return (
-      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${config.bg} ${config.text}`}>
-        <Icon className="w-3.5 h-3.5" />
-        {config.label}
-      </span>
-    );
+  const defaultConfig = { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: Clock, label: 'Pending' };
+
+  const configs = {
+    pending: defaultConfig,
+    completed: { bg: 'bg-green-100', text: 'text-green-700', icon: CheckCircle, label: 'Completed' },
+    failed: { bg: 'bg-red-100', text: 'text-red-700', icon: XCircle, label: 'Failed' }
   };
+
+  const config = configs[status] || defaultConfig;
+  const Icon = config.icon;
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${config.bg} ${config.text}`}>
+      <Icon className="w-3.5 h-3.5" />
+      {config.label}
+    </span>
+  );
+};
 
   if (!userData) {
     return (
@@ -227,7 +232,7 @@ function WithdrawPage() {
 
                   <div className="flex gap-3 mt-3">
                     {[10, 25, 50, 100].map(usd => {
-                      const kes = usd * EXCHANGE_RATE;
+                      // const kes = usd * EXCHANGE_RATE;
                       return (
                         <button 
                           key={usd} 
