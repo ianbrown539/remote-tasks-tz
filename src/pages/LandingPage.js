@@ -5,7 +5,6 @@ import Footer from "../components/Footer";
 import {
   Check,
   Clock,
-  DollarSign,
   Users,
   Zap,
   ArrowRight,

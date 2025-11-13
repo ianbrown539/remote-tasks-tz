@@ -1,5 +1,5 @@
 // src/pages/WithdrawPage.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth, db } from '../services/firebase';
 import {
@@ -28,7 +28,6 @@ import {
   Calendar,
   X,
   Check,
-  X as XIcon,
 } from 'lucide-react';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -75,7 +74,24 @@ const WithdrawPage = () => {
     minTasks: false,
   });
 
-  // Auth + Data
+  // Fixed: getStatusIcon inside component, no external config
+  const getStatusIcon = useCallback((status) => {
+    const config = {
+      pending: { icon: Clock, color: 'text-orange-600', bg: 'bg-orange-50' },
+      completed: { icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50' },
+      failed: { icon: XCircle, color: 'text-red-600', bg: 'bg-red-50' },
+    }[status] || { icon: Clock, color: 'text-orange-600', bg: 'bg-orange-50' };
+
+    const Icon = config.icon;
+    return (
+      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${config.bg} ${config.color}`}>
+        <Icon className="w-3.5 h-3.5" />
+        {status.charAt(0).toUpperCase() + status.slice(1)}
+      </span>
+    );
+  }, []);
+
+  // ... rest of your useEffect and logic (unchanged)
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
       if (!currentUser) {
@@ -91,15 +107,6 @@ const WithdrawPage = () => {
           setProfile(data);
           setBalance(data.balance || 0);
           setPhone(data.phone || '');
-
-          const tasksDone = data.completedTasks || 0;
-          const amountOk = data.balance >= MIN_AFTER_FEE_USD;
-
-          setEligibility(prev => ({
-            ...prev,
-            minAmount: amountOk,
-            minTasks: tasksDone >= MIN_COMPLETED_TASKS,
-          }));
         }
       });
 
@@ -109,7 +116,6 @@ const WithdrawPage = () => {
         orderBy('requestedAt', 'desc'),
         limit(5)
       );
-
       const unsubWithdrawals = onSnapshot(q, (snapshot) => {
         setWithdrawals(
           snapshot.docs.map((d) => ({
@@ -129,86 +135,75 @@ const WithdrawPage = () => {
     return () => unsubAuth();
   }, [navigate]);
 
+  useEffect(() => {
+    if (!profile) return;
+    const tasksDone = profile.completedTasks || 0;
+    const amountOk = balance >= MIN_AFTER_FEE_USD;
+    setEligibility({
+      isThursday: isThursday(),
+      minAmount: amountOk,
+      minTasks: tasksDone >= MIN_COMPLETED_TASKS,
+    });
+  }, [profile, balance]);
+
   const handleSubmit = async (e) => {
-  e.preventDefault();
-  const usd = parseFloat(amount);
+    e.preventDefault();
+    const usd = parseFloat(amount);
+    if (isNaN(usd) || usd <= 0) return toast.error('Enter valid amount');
 
-  // === GET LATEST VALUES (no stale state) ===
-  const isThu = isThursday();
-  const tasksDone = profile?.completedTasks || 0;
-  const amountValid = usd >= MIN_AFTER_FEE_USD && balance >= MIN_AFTER_FEE_USD;
-  const tasksValid = tasksDone >= MIN_COMPLETED_TASKS;
+    const isThu = isThursday();
+    const tasksDone = profile?.completedTasks || 0;
+    const amountValid = usd >= MIN_AFTER_FEE_USD && balance >= usd;
+    const tasksValid = tasksDone >= MIN_COMPLETED_TASKS;
 
-  const checks = {
-    isThursday: isThu,
-    minAmount: amountValid,
-    minTasks: tasksValid,
+    if (!isThu || !amountValid || !tasksValid) {
+      setEligibility({ isThursday: isThu, minAmount: amountValid, minTasks: tasksValid });
+      setShowModal(true);
+      return;
+    }
+
+    if (method === 'mpesa') {
+      const normalized = normalizeMpesa(phone);
+      if (!normalized) return toast.error('Invalid M-Pesa number');
+      setPhone(normalized);
+    }
+    if (method === 'paypal' && !paypalEmail.includes('@')) {
+      return toast.error('Invalid PayPal email');
+    }
+    if (method === 'bank') {
+      const { bankName, accountName, accountNumber } = bankDetails;
+      if (!bankName || !accountName || !accountNumber) {
+        return toast.error('Complete bank details');
+      }
+    }
+
+    setLoading(true);
+    try {
+      const withdrawalId = `${user.uid}_${Date.now()}`;
+      const payload = {
+        userId: user.uid,
+        name: user.displayName || 'User',
+        email: user.email,
+        amount: usd,
+        method,
+        status: 'pending',
+        requestedAt: serverTimestamp(),
+      };
+
+      if (method === 'mpesa') payload.phone = normalizeMpesa(phone);
+      if (method === 'paypal') payload.paypalEmail = paypalEmail;
+      if (method === 'bank') payload.bankDetails = bankDetails;
+
+      await setDoc(doc(db, 'withdrawals', withdrawalId), payload);
+      toast.success('Withdrawal requested! Paid within 24 hrs.');
+      resetForm();
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed. Try again.');
+    } finally {
+      setLoading(false);
+    }
   };
-
-  // === SHOW MODAL IF ANY FAIL ===
-  if (!isThu || !amountValid || !tasksValid) {
-    setEligibility(checks);
-    setShowModal(true);
-    return;
-  }
-
-  // === PROCEED WITH WITHDRAWAL ===
-  if (usd > balance) {
-    toast.error('Insufficient balance');
-    return;
-  }
-
-  if (method === 'mpesa') {
-    const normalized = normalizeMpesa(phone);
-    if (!normalized) {
-      toast.error('Invalid M-Pesa number');
-      return;
-    }
-    setPhone(normalized);
-  }
-
-  if (method === 'paypal' && !paypalEmail.includes('@')) {
-    toast.error('Invalid PayPal email');
-    return;
-  }
-
-  if (method === 'bank') {
-    const { bankName, accountName, accountNumber } = bankDetails;
-    if (!bankName || !accountName || !accountNumber) {
-      toast.error('Complete bank details');
-      return;
-    }
-  }
-
-  setLoading(true);
-  try {
-    const withdrawalId = `${user.uid}_${Date.now()}`;
-    const payload = {
-      userId: user.uid,
-      name: user.displayName || 'User',
-      email: user.email,
-      amount: usd,
-      method,
-      status: 'pending',
-      requestedAt: serverTimestamp(),
-    };
-
-    if (method === 'mpesa') payload.phone = normalizeMpesa(phone);
-    if (method === 'paypal') payload.paypalEmail = paypalEmail;
-    if (method === 'bank') payload.bankDetails = bankDetails;
-
-    await setDoc(doc(db, 'withdrawals', withdrawalId), payload);
-    await setDoc(doc(db, 'users', user.uid), { balance: balance - usd }, { merge: true });
-
-    toast.success('Withdrawal requested! Paid within 24 hrs.');
-    resetForm();
-  } catch (err) {
-    console.error(err);
-    toast.error('Failed. Try again.');
-  } finally {
-    setLoading(false);
-  }
-};
 
   const resetForm = () => {
     setAmount('');
@@ -218,22 +213,6 @@ const WithdrawPage = () => {
 
   const fee = amount ? (parseFloat(amount) * FEE_PERCENTAGE) / 100 : 0;
   const receive = amount ? parseFloat(amount) - fee : 0;
-
-  const getStatusIcon = (status) => {
-    const config = {
-      pending: { icon: Clock, color: 'text-orange-600', bg: 'bg-orange-50' },
-      completed: { icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50' },
-      failed: { icon: XCircle, color: 'text-red-600', bg: 'bg-red-50' },
-    }[status] || config.pending;
-
-    const Icon = config.icon;
-    return (
-      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${config.bg} ${config.color}`}>
-        <Icon className="w-3.5 h-3.5" />
-        {status.charAt(0).toUpperCase() + status.slice(1)}
-      </span>
-    );
-  };
 
   if (!user || !profile) {
     return (
@@ -250,64 +229,39 @@ const WithdrawPage = () => {
     <>
       <ToastContainer position="top-center" theme="light" autoClose={3000} />
 
-      {/* MODAL ONLY ON SUBMIT FAILURE */}
+      {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl">
             <div className="flex justify-between items-start mb-5">
               <h3 className="text-xl font-bold text-slate-900">Cannot Withdraw</h3>
-              <button
-                onClick={() => setShowModal(false)}
-                className="p-1 hover:bg-slate-100 rounded-lg"
-              >
+              <button onClick={() => setShowModal(false)} className="p-1 hover:bg-slate-100 rounded-lg">
                 <X className="w-5 h-5" />
               </button>
             </div>
-
             <div className="space-y-4">
               <div className="flex items-center gap-3">
-                {eligibility.isThursday ? (
-                  <Check className="w-5 h-5 text-green-600" />
-                ) : (
-                  <XIcon className="w-5 h-5 text-red-600" />
-                )}
+                {eligibility.isThursday ? <Check className="w-5 h-5 text-green-600" /> : <X className="w-5 h-5 text-red-600" />}
                 <div>
                   <p className="font-medium">Today is Thursday</p>
-                  <p className="text-xs text-slate-500">
-                    {eligibility.isThursday ? 'Allowed' : 'Only Thursdays'}
-                  </p>
+                  <p className="text-xs text-slate-500">{eligibility.isThursday ? 'Allowed' : 'Only Thursdays'}</p>
                 </div>
               </div>
-
               <div className="flex items-center gap-3">
-                {eligibility.minAmount ? (
-                  <Check className="w-5 h-5 text-green-600" />
-                ) : (
-                  <XIcon className="w-5 h-5 text-red-600" />
-                )}
+                {eligibility.minAmount ? <Check className="w-5 h-5 text-green-600" /> : <X className="w-5 h-5 text-red-600" />}
                 <div>
-                  <p className="font-medium">≥ $10.20 after fee</p>
-                  <p className="text-xs text-slate-500">
-                    You entered ${amount || '0'} • Balance: ${balance.toFixed(2)}
-                  </p>
+                  <p className="font-medium">Greater than or equal to $10.20 after fee</p>
+                  <p className="text-xs text-slate-500">You entered ${amount || '0'} • Balance: ${balance.toFixed(2)}</p>
                 </div>
               </div>
-
               <div className="flex items-center gap-3">
-                {eligibility.minTasks ? (
-                  <Check className="w-5 h-5 text-green-600" />
-                ) : (
-                  <XIcon className="w-5 h-5 text-red-600" />
-                )}
+                {eligibility.minTasks ? <Check className="w-5 h-5 text-green-600" /> : <X className="w-5 h-5 text-red-600" />}
                 <div>
-                  <p className="font-medium">≥ 15 tasks completed</p>
-                  <p className="text-xs text-slate-500">
-                    You have {profile.completedTasks || 0}
-                  </p>
+                  <p className="font-medium">Greater than or equal to 15 tasks completed</p>
+                  <p className="text-xs text-slate-500">You have {profile.completedTasks || 0}</p>
                 </div>
               </div>
             </div>
-
             <button
               onClick={() => setShowModal(false)}
               className="mt-6 w-full bg-slate-100 text-slate-700 font-bold py-3 rounded-xl hover:bg-slate-200 transition"
@@ -318,20 +272,16 @@ const WithdrawPage = () => {
         </div>
       )}
 
+      {/* Main UI */}
       <div className="min-h-screen bg-gradient-to-br from-slate-900 to-indigo-900 py-6 px-4">
         <div className="max-w-4xl mx-auto">
-          <button
-            onClick={() => navigate(-1)}
-            className="flex items-center gap-2 text-blue-100 hover:text-white mb-6 text-sm"
-          >
+          <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-blue-100 hover:text-white mb-6 text-sm">
             <ArrowLeft className="w-4 h-4" /> Back
           </button>
-
           <h1 className="text-3xl font-black text-white mb-2">Withdraw Earnings</h1>
           <p className="text-blue-100 mb-8">Loyalty pays — every Thursday</p>
 
           <div className="grid lg:grid-cols-3 gap-6">
-            {/* Form */}
             <div className="lg:col-span-2">
               <div className="bg-white rounded-2xl p-6 shadow-xl border border-slate-200">
                 <div className="flex justify-between items-center mb-6 pb-4 border-b">
@@ -344,6 +294,7 @@ const WithdrawPage = () => {
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-5">
+                  {/* ... rest of form (unchanged) ... */}
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-2">
                       Amount (USD) – Min $10.20 after fee
@@ -368,9 +319,7 @@ const WithdrawPage = () => {
                           <span>You Receive</span>
                           <span>${receive.toFixed(2)}</span>
                         </div>
-                        <p className="text-xs text-slate-600 mt-1">
-                          ≈ {formatKES(receive)}
-                        </p>
+                        <p className="text-xs text-slate-600 mt-1">≈ {formatKES(receive)}</p>
                       </div>
                     )}
                   </div>
@@ -485,7 +434,6 @@ const WithdrawPage = () => {
               </div>
             </div>
 
-            {/* Sidebar */}
             <div className="space-y-5">
               <div className="bg-white p-5 rounded-2xl shadow border border-slate-200">
                 <h3 className="font-bold flex items-center gap-2 mb-3">

@@ -1,5 +1,5 @@
 // src/pages/UserDashboard.js
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   doc,
@@ -42,10 +42,10 @@ const formatKES = (usd) =>
     .toFixed(2)
     .replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
 
-const vipPlans = {
-  Bronze: { priceUSD: 10 },
-  Silver: { priceUSD: 20 },
-  Gold: { priceUSD: 50 },
+const VIP_CONFIG = {
+  Bronze: { priceUSD: 10, dailyTasks: 10 },
+  Silver: { priceUSD: 20, dailyTasks: 20 },
+  Gold: { priceUSD: 50, dailyTasks: 50 },
 };
 
 const getNextThursday = () => {
@@ -95,11 +95,11 @@ const normalizePhoneNumber = (input) => {
   if (!input) return null;
   const cleaned = input.replace(/\D/g, '');
 
-  if ((input.startsWith('07') || input.startsWith('01')) && cleaned.length === 10) {
+  if (/^0[71]\d{8}$/.test(input)) {
     return `254${cleaned.slice(1)}`;
   }
-  if (input.startsWith('+254') && cleaned.length === 12) return cleaned;
-  if (cleaned.startsWith('254') && cleaned.length === 12) return cleaned;
+  if (/^\+254[71]\d{8}$/.test(input)) return cleaned;
+  if (/^254[71]\d{8}$/.test(cleaned)) return cleaned;
   return null;
 };
 
@@ -133,6 +133,21 @@ const UserDashboard = () => {
     return () => clearInterval(timer);
   }, []);
 
+  // Memoized addNotification
+  const addNotification = useCallback((msg) => {
+    const newNotif = {
+      id: Date.now().toString(),
+      message: msg,
+      timestamp: new Date().toISOString(),
+      read: false,
+    };
+    const updated = [newNotif, ...notifications];
+    setNotifications(updated);
+    if (currentUser?.uid) {
+      localStorage.setItem(`notifications_${currentUser.uid}`, JSON.stringify(updated));
+    }
+  }, [currentUser?.uid, notifications]);
+
   // Load user profile and tasks
   useEffect(() => {
     if (!currentUser) return;
@@ -142,11 +157,10 @@ const UserDashboard = () => {
       const data = snap.data();
       setUserProfile(data);
 
-      const today = new Date().toDateString();
-      const lastReset = data.lastTaskResetDate?.toDate?.()?.toDateString();
+      const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+      const lastReset = data.lastTaskResetDate?.toDate?.().toLocaleDateString('en-CA');
       const isVIP = data.isVIP || false;
-      const vipTiers = { Bronze: 10, Silver: 20, Gold: 50 };
-      const maxTasks = isVIP ? vipTiers[data.vipTier] || 10 : 2;
+      const maxTasks = isVIP ? VIP_CONFIG[data.vipTier]?.dailyTasks || 2 : 2;
 
       if (lastReset !== today) {
         updateDoc(doc(db, 'users', currentUser.uid), {
@@ -168,15 +182,17 @@ const UserDashboard = () => {
     return () => unsub();
   }, [currentUser]);
 
-  // Persist tasks and notifications
+  // Persist tasks
   useEffect(() => {
-    if (currentUser && myTasks.length) {
+    if (currentUser?.uid && myTasks.length) {
       localStorage.setItem(`myTasks_${currentUser.uid}`, JSON.stringify(myTasks));
     }
-  }, [myTasks, currentUser]);
+  }, [myTasks, currentUser?.uid]);
 
   // Auto-approval simulation
   useEffect(() => {
+    if (!currentUser) return;
+
     const interval = setInterval(() => {
       setMyTasks((prev) => {
         let changed = false;
@@ -205,28 +221,28 @@ const UserDashboard = () => {
             toast.success(`+$${task.paymentAmount.toFixed(2)} approved!`, {
               icon: <CheckCircle className="w-5 h-5 text-green-500" />,
             });
-            
-            // Add notification for approved task
+
             addNotification(
               `Task: You have been paid $${task.paymentAmount.toFixed(
                 2
               )}! Task "${task.title}" has been approved successfully.`
             );
-            
+
             setShowConfetti(true);
             setTimeout(() => setShowConfetti(false), 4000);
           }
           return task;
         });
 
-        if (changed) {
+        if (changed && currentUser?.uid) {
           localStorage.setItem(`myTasks_${currentUser.uid}`, JSON.stringify(updated));
         }
         return updated;
       });
     }, 5000);
+
     return () => clearInterval(interval);
-  }, [currentUser]);
+  }, [currentUser, addNotification]);
 
   // Daily reminder
   useEffect(() => {
@@ -252,19 +268,18 @@ const UserDashboard = () => {
 
       localStorage.setItem(`lastReminder_${currentUser.uid}`, today);
     }
-  }, [currentUser, userProfile, dailyTasksRemaining, myTasks]);
+  }, [currentUser, userProfile, dailyTasksRemaining, myTasks, addNotification]);
 
   const startTask = async (task) => {
-    const vipTiers = { Bronze: 10, Silver: 20, Gold: 50 };
-    const maxAllowed = userProfile?.isVIP
-      ? vipTiers[userProfile.vipTier] || 10
+    const maxTasks = userProfile?.isVIP
+      ? VIP_CONFIG[userProfile.vipTier]?.dailyTasks || 2
       : 2;
 
     const usedToday = myTasks.filter(
       (t) => new Date(t.startedAt).toDateString() === new Date().toDateString()
     ).length;
 
-    if (usedToday >= maxAllowed) {
+    if (usedToday >= maxTasks) {
       setShowVIPModal(true);
       return;
     }
@@ -288,22 +303,12 @@ const UserDashboard = () => {
     navigate(`/working/${task.id}`);
   };
 
-  const addNotification = (msg) => {
-    const newNotif = {
-      id: Date.now().toString(),
-      message: msg,
-      timestamp: new Date().toISOString(),
-      read: false,
-    };
-    const updated = [newNotif, ...notifications];
-    setNotifications(updated);
-    localStorage.setItem(`notifications_${currentUser.uid}`, JSON.stringify(updated));
-  };
-
   const markAllRead = () => {
     const updated = notifications.map(n => ({ ...n, read: true }));
     setNotifications(updated);
-    localStorage.setItem(`notifications_${currentUser.uid}`, JSON.stringify(updated));
+    if (currentUser?.uid) {
+      localStorage.setItem(`notifications_${currentUser.uid}`, JSON.stringify(updated));
+    }
   };
 
   const handleRealVIPUpgrade = async () => {
@@ -314,7 +319,7 @@ const UserDashboard = () => {
 
     setIsProcessing(true);
     const clientReference = `VIP_${currentUser.uid}_${Date.now()}`;
-    const amount = vipPlans[selectedVIP].priceUSD;
+    const amount = VIP_CONFIG[selectedVIP].priceUSD;
     let poll = null;
 
     try {
@@ -373,8 +378,7 @@ const UserDashboard = () => {
   };
 
   const finalizeVIPUpgrade = async () => {
-    const tasksMap = { Bronze: 10, Silver: 20, Gold: 50 };
-    const newMax = tasksMap[selectedVIP];
+    const newMax = VIP_CONFIG[selectedVIP].dailyTasks;
 
     await updateDoc(doc(db, 'users', currentUser.uid), {
       isVIP: true,
@@ -418,6 +422,11 @@ const UserDashboard = () => {
   const todayEarnings = todayTasks
     .filter((t) => t.status === 'approved')
     .reduce((s, t) => s + t.paymentAmount, 0);
+
+  const maxTasks = userProfile?.isVIP
+    ? VIP_CONFIG[userProfile.vipTier]?.dailyTasks || 2
+    : 2;
+  const progress = maxTasks > 0 ? ((maxTasks - dailyTasksRemaining) / maxTasks) * 100 : 0;
 
   const categories = ['all', ...new Set(availableTasks.map((t) => t.category))];
   const filteredTasks =
@@ -507,7 +516,7 @@ const UserDashboard = () => {
         {/* Welcome Header */}
         <div className="mb-8">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <h1 className="text-2xl font-black text-white">Welcome back 👋</h1>
+            <h1 className="text-2xl font-black text-white">Welcome back</h1>
             <div className="flex items-center gap-4 text-sm text-blue-100">
               <div>
                 <p className="text-xs uppercase tracking-wide">Next Payout</p>
@@ -582,9 +591,7 @@ const UserDashboard = () => {
                   <div className="w-full bg-slate-100 rounded-full h-2">
                     <div 
                       className="bg-gradient-to-r from-amber-400 to-orange-500 h-2 rounded-full transition-all duration-500"
-                      style={{ 
-                        width: `${Math.max(0, ((10 - dailyTasksRemaining) / 10) * 100)}%` 
-                      }}
+                      style={{ width: `${progress}%` }}
                     ></div>
                   </div>
                 </div>
@@ -772,7 +779,7 @@ const UserDashboard = () => {
             </p>
 
             <div className="grid md:grid-cols-3 gap-4 mb-6">
-              {Object.entries(vipPlans).map(([tier, { priceUSD }]) => (
+              {Object.entries(VIP_CONFIG).map(([tier, config]) => (
                 <label
                   key={tier}
                   className={`cursor-pointer p-5 rounded-2xl border-2 transition-all ${
@@ -795,13 +802,13 @@ const UserDashboard = () => {
                       {tier} VIP
                     </h3>
                     <p className={`text-3xl font-black my-2 ${selectedVIP === tier ? 'text-white' : 'text-slate-900'}`}>
-                      ${priceUSD}
+                      ${config.priceUSD}
                     </p>
                     <p className={`text-sm ${selectedVIP === tier ? 'text-white/90' : 'text-slate-500'}`}>
-                      {formatKES(priceUSD)}
+                      {formatKES(config.priceUSD)}
                     </p>
                     <p className={`mt-3 font-bold ${selectedVIP === tier ? 'text-white' : 'text-green-600'}`}>
-                      {vipPlans[tier].priceUSD === 10 ? '10' : vipPlans[tier].priceUSD === 20 ? '20' : '50'} Tasks/Day
+                      {config.dailyTasks} Tasks/Day
                     </p>
                   </div>
                 </label>
