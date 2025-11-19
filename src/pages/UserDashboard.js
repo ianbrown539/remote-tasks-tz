@@ -16,7 +16,6 @@ import {
   Briefcase,
   TrendingUp,
   CheckCircle,
-  Clock,
   ChevronRight,
   LogOut,
   Menu,
@@ -26,8 +25,14 @@ import {
   PlayCircle,
   RefreshCw,
   CheckCircle2,
-  Lock,
   Bell,
+  Zap,
+  Clock,
+  Headphones,
+  Shield,
+  Gift,
+  Sparkles,
+  Lock,
   User,
   Star
 } from 'lucide-react';
@@ -44,9 +49,9 @@ const formatKES = (usd) =>
     .replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
 
 const VIP_CONFIG = {
-  Bronze: { priceUSD: 1, dailyTasks: 8 },
-  Silver: { priceUSD: 4, dailyTasks: 20 },
-  Gold: { priceUSD: 10, dailyTasks: 52 },
+  Bronze: { priceUSD: 1, dailyTasks: 4 },
+  Silver: { priceUSD: 4, dailyTasks: 7 },
+  Gold:   { priceUSD: 10, dailyTasks: 10 },
 };
 
 const getNextThursday = () => {
@@ -55,6 +60,15 @@ const getNextThursday = () => {
   thursday.setDate(now.getDate() + ((4 - now.getDay() + 7) % 7 || 7));
   thursday.setHours(23, 59, 59, 0);
   return thursday;
+};
+
+const getLastThursday = () => {
+  const now = new Date();
+  const lastThursday = new Date(now);
+  const daysSinceThursday = (now.getDay() + 3) % 7;
+  lastThursday.setDate(now.getDate() - daysSinceThursday);
+  lastThursday.setHours(0, 0, 0, 0);
+  return lastThursday;
 };
 
 const formatTime = (ms) => {
@@ -136,18 +150,20 @@ const UserDashboard = () => {
 
   // Memoized addNotification
   const addNotification = useCallback((msg) => {
-    const newNotif = {
-      id: Date.now().toString(),
-      message: msg,
-      timestamp: new Date().toISOString(),
-      read: false,
-    };
-    const updated = [newNotif, ...notifications];
-    setNotifications(updated);
-    if (currentUser?.uid) {
-      localStorage.setItem(`notifications_${currentUser.uid}`, JSON.stringify(updated));
-    }
-  }, [currentUser?.uid, notifications]);
+    setNotifications(prev => {
+      const newNotif = {
+        id: Date.now().toString(),
+        message: msg,
+        timestamp: new Date().toISOString(),
+        read: false,
+      };
+      const updated = [newNotif, ...prev];
+      if (currentUser?.uid) {
+        localStorage.setItem(`notifications_${currentUser.uid}`, JSON.stringify(updated));
+      }
+      return updated;
+    });
+  }, [currentUser?.uid]);
 
   // Load user profile and tasks
   useEffect(() => {
@@ -158,33 +174,20 @@ const UserDashboard = () => {
       const data = snap.data();
       setUserProfile(data);
 
-      const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
-      const lastReset = data.lastTaskResetDate?.toDate?.().toLocaleDateString('en-CA');
+      const today = new Date().toLocaleDateString('en-CA');
+      const lastReset = data.lastTaskResetDate?.toDate?.().toLocaleDateString('en-CA') || null;
       const isVIP = data.isVIP || false;
-      const maxTasks = isVIP ? VIP_CONFIG[data.vipTier]?.dailyTasks || 2 : 2;
+      const tier = data.tier?.replace('VIP', '') || '';
+      const maxTasks = isVIP ? VIP_CONFIG[tier]?.dailyTasks || 1 : 1;
 
       if (lastReset !== today) {
         updateDoc(doc(db, 'users', currentUser.uid), {
           dailyTasksRemaining: maxTasks,
-          // lastTaskResetDate: serverTimestamp(),
+          lastTaskResetDate: serverTimestamp(),
         });
         setDailyTasksRemaining(maxTasks);
       } else {
-        // Inside onSnapshot for user profile
-const today = new Date().toLocaleDateString('en-CA');
-const lastReset = data.lastTaskResetDate?.toDate?.().toLocaleDateString('en-CA') || null;
-
-// Reset daily counter at midnight
-if (lastReset !== today) {
-  const newMax = isVIP ? VIP_CONFIG[data.vipTier?.replace('VIP', '')]?.dailyTasks || 2 : 2;
-  updateDoc(doc(db, 'users', currentUser.uid), {
-    dailyTasksRemaining: newMax,
-    lastTaskResetDate: serverTimestamp(),
-  });
-  setDailyTasksRemaining(newMax);
-} else {
-  setDailyTasksRemaining(data.dailyTasksRemaining ?? maxTasks);
-}
+        setDailyTasksRemaining(data.dailyTasksRemaining ?? maxTasks);
       }
     });
 
@@ -212,8 +215,17 @@ if (lastReset !== today) {
       setMyTasks((prev) => {
         let changed = false;
         const updated = prev.map((task) => {
+          // Check if this is the onboarding task
+          const isOnboardingTask = task.id.startsWith(availableTasks[0]?.id);
+          
           if (task.status === 'completed' && !task.approvalScheduled) {
-            task.approvalScheduled = Date.now() + (Math.random() * 240000 + 60000);
+            // Faster approval time for onboarding task (30-60 seconds)
+            // Normal approval time for regular tasks (1-5 minutes)
+            const approvalDelay = isOnboardingTask 
+              ? Math.random() * 30000 + 30000  // 30-60 seconds for onboarding
+              : Math.random() * 240000 + 60000; // 1-5 minutes for regular tasks
+            
+            task.approvalScheduled = Date.now() + approvalDelay;
             changed = true;
           }
 
@@ -226,29 +238,25 @@ if (lastReset !== today) {
             task.approvedAt = new Date();
             changed = true;
 
-            // Check if this is the onboarding task (first task)
-            const isOnboardingTask = task.id.startsWith(availableTasks[0]?.id);
-
             updateDoc(doc(db, 'users', currentUser.uid), {
               currentbalance: increment(task.paymentAmount),
               thisMonthEarned: increment(task.paymentAmount),
               totalEarned: increment(task.paymentAmount),
               ApprovedTasks: increment(1),
-              // Mark onboarding as complete if this is the first task
               ...(isOnboardingTask && { hasDoneOnboardingTask: true })
             });
 
-            toast.success(`+$${task.paymentAmount.toFixed(2)} approved!`, {
+            toast.success(`+${task.paymentAmount.toFixed(2)} approved!`, {
               icon: <CheckCircle className="w-5 h-5 text-green-500" />,
             });
 
             if (isOnboardingTask) {
               addNotification(
-                `🎉 Congratulations! You've completed your onboarding task and earned $${task.paymentAmount.toFixed(2)}! All tasks are now unlocked.`
+                `🎉 Congratulations! You've completed your onboarding task and earned ${task.paymentAmount.toFixed(2)}! All tasks are now unlocked.`
               );
             } else {
               addNotification(
-                `You have been paid $${task.paymentAmount.toFixed(
+                `You have been paid ${task.paymentAmount.toFixed(
                   2
                 )}! Task "${task.title}" has been approved successfully.`
               );
@@ -298,11 +306,12 @@ if (lastReset !== today) {
 
   const startTask = async (task) => {
     const maxTasks = userProfile?.isVIP
-      ? VIP_CONFIG[userProfile.vipTier]?.dailyTasks || 2
+      ? VIP_CONFIG[userProfile.tier?.replace('VIP', '')]?.dailyTasks || 2
       : 2;
 
     const usedToday = myTasks.filter(
-      (t) => new Date(t.startedAt).toDateString() === new Date().toDateString()
+      (t) => new Date(t.startedAt).toDateString() === new Date().toDateString() &&
+             ['completed', 'approved'].includes(t.status)
     ).length;
 
     if (usedToday >= maxTasks) {
@@ -320,7 +329,6 @@ if (lastReset !== today) {
     };
 
     setMyTasks((prev) => [...prev, newTask]);
-    setDailyTasksRemaining((prev) => Math.max(0, prev - 1));
 
     toast.success('Task started', {
       icon: <Briefcase className="w-5 h-5 text-blue-600" />,
@@ -408,7 +416,7 @@ if (lastReset !== today) {
 
     await updateDoc(doc(db, 'users', currentUser.uid), {
       isVIP: true,
-      tier: `${selectedVIP}VIP`, // Update tier to BronzeVIP, SilverVIP, or GoldVIP
+      tier: `${selectedVIP}VIP`,
       dailyTasksRemaining: newMax,
       lastTaskResetDate: serverTimestamp(),
       vipUpgradedAt: serverTimestamp(),
@@ -450,15 +458,23 @@ if (lastReset !== today) {
     .reduce((s, t) => s + t.paymentAmount, 0);
 
   const maxTasks = userProfile?.isVIP
-    ? VIP_CONFIG[userProfile.tier?.replace('VIP', '')]?.dailyTasks || 2
+    ? VIP_CONFIG[userProfile.tier?.replace('VIP', '')]?.dailyTasks || 1
     : 2;
-  const progress = maxTasks > 0 ? ((maxTasks - dailyTasksRemaining) / maxTasks) * 100 : 0;
-
-  // ONBOARDING LOGIC: Filter tasks based on onboarding status
-  const hasCompletedOnboarding = userProfile?.hasDoneOnboardingTask || false;
-  const onboardingTask = availableTasks[0]; // First task is the onboarding task
   
-  // If user hasn't completed onboarding, show only the onboarding task
+  const todayCompletedTasks = myTasks.filter(t => 
+    new Date(t.startedAt).toDateString() === new Date().toDateString() &&
+    ['completed', 'approved'].includes(t.status)
+  ).length;
+  
+  const progress = maxTasks > 0 ? (todayCompletedTasks / maxTasks) * 100 : 0;
+  
+  const lastThursday = getLastThursday();
+  const nextThursday = getNextThursday();
+  const dateRange = `${lastThursday.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} - ${nextThursday.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+
+  const hasCompletedOnboarding = userProfile?.hasDoneOnboardingTask || false;
+  const onboardingTask = availableTasks[0];
+  
   const tasksToShow = hasCompletedOnboarding ? availableTasks : [onboardingTask];
   
   const categories = ['all', ...new Set(tasksToShow.map((t) => t.category))];
@@ -477,7 +493,6 @@ if (lastReset !== today) {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900">
       {showConfetti && <Confetti recycle={false} numberOfPieces={200} gravity={0.3} />}
 
-      {/* Header */}
       <header className="bg-white/95 backdrop-blur-xl border-b border-amber-400/20 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -500,7 +515,6 @@ if (lastReset !== today) {
             </div>
 
             <div className="flex items-center gap-4">
-              {/* User Profile */}
               <div className="hidden sm:flex items-center justify-center px-4 py-2 bg-slate-50 rounded-lg border border-slate-200">
                 <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
                   {userProfile?.name?.[0] ?? <User className="w-4 h-4" />}
@@ -515,7 +529,6 @@ if (lastReset !== today) {
                 </div>
               </div>
 
-              {/* Notification Bell */}
               <button
                 onClick={() => setShowNotifications(true)}
                 className="relative p-2 rounded-lg hover:bg-slate-100 transition"
@@ -526,7 +539,6 @@ if (lastReset !== today) {
                 )}
               </button>
 
-              {/* Sign Out */}
               <button
                 onClick={() =>
                   auth.signOut().then(() => {
@@ -544,9 +556,7 @@ if (lastReset !== today) {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* Onboarding Banner */}
         {!hasCompletedOnboarding && (
           <div className="mb-6 bg-gradient-to-r from-amber-400 to-orange-500 rounded-2xl p-6 text-slate-900 shadow-lg">
             <div className="flex items-start gap-4">
@@ -567,7 +577,6 @@ if (lastReset !== today) {
           </div>
         )}
 
-        {/* Welcome Header */}
         <div className="mb-8">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <h1 className="text-2xl font-black text-white">
@@ -591,14 +600,9 @@ if (lastReset !== today) {
           </div>
         </div>
 
-       
-       {/* Expert-Level Stats Dashboard – Mobile-First, Premium Feel */}
 <section className="mb-10">
   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-    {/* === FINANCIAL OVERVIEW – Premium Glass Card === */}
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6 text-white shadow-xl border border-white/10">
-      {/* Subtle animated glow */}
       <div className="absolute inset-0 bg-gradient-to-tr from-amber-500/5 via-transparent to-transparent" />
 
       <div className="relative z-10">
@@ -610,25 +614,21 @@ if (lastReset !== today) {
           </div>
         </div>
 
-        {/* Main Balance */}
         <div className="bg-white/10 backdrop-blur-md rounded-xl p-5 border border-white/20">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-sm text-slate-300">Available Balance</p>
+            <div>
+              <p className="text-sm text-slate-300">Available Balance ({dateRange})</p>
+            </div>
             <DollarSign className="w-5 h-5 text-amber-400" />
           </div>
           <p className="text-3xl font-black tracking-tight">
             ${(userProfile?.currentbalance ?? 0).toFixed(2)}
           </p>
-          <p className="text-lg font-bold text-amber-300 mt-1">
+          <p className="text-lg font-bold text-amber-500 mt-1">
             {formatKES(userProfile?.currentbalance ?? 0)}
-          </p>
-          <p className="text-xs text-slate-400 mt-3 flex items-center gap-1">
-            <Calendar className="w-3.5 h-3.5" />
-            Next payout in {formatTime(timeLeft)}
           </p>
         </div>
 
-        {/* This Month + Today */}
         <div className="grid grid-cols-2 gap-4 mt-5">
           <div className="bg-white/5 rounded-lg p-4 border border-white/10">
             <p className="text-xs text-slate-400">This Month</p>
@@ -646,7 +646,6 @@ if (lastReset !== today) {
       </div>
     </div>
 
-    {/* === TODAY'S PERFORMANCE – Clean & Precise === */}
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
       <h3 className="text-base font-semibold text-slate-900 mb-5">Today's Performance</h3>
 
@@ -661,11 +660,10 @@ if (lastReset !== today) {
           : 2;
 
         const remaining = Math.max(0, maxDaily - todayCompleted);
-        const progress = maxDaily > 0 ? Math.round((todayCompleted / maxDaily) * 100) : 0;
+        const progressPercentage = maxDaily > 0 ? Math.round((todayCompleted / maxDaily) * 100) : 0;
 
         return (
           <div className="space-y-5">
-            {/* Quota Progress */}
             <div>
               <div className="flex justify-between items-center mb-2">
                 <span className="text-sm font-medium text-slate-600">Daily Quota</span>
@@ -676,7 +674,7 @@ if (lastReset !== today) {
               <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-gradient-to-r from-amber-400 to-orange-500 transition-all duration-700 rounded-full"
-                  style={{ width: `${progress}%` }}
+                  style={{ width: `${progressPercentage}%` }}
                 />
               </div>
               <p className="text-xs text-slate-500 mt-2">
@@ -687,7 +685,6 @@ if (lastReset !== today) {
               </p>
             </div>
 
-            {/* Stats Grid */}
             <div className="grid grid-cols-3 gap-3 text-center">
               <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200">
                 <CheckCircle className="w-6 h-6 text-emerald-600 mx-auto mb-1" />
@@ -718,7 +715,6 @@ if (lastReset !== today) {
               </div>
             </div>
 
-            {/* Today's Earnings */}
             <div className="pt-4 border-t border-slate-100 flex justify-between items-center">
               <span className="text-sm text-slate-600">Earnings Today</span>
               <span className="text-xl font-bold text-green-600">
@@ -732,8 +728,6 @@ if (lastReset !== today) {
   </div>
 </section>
 
-
-        {/* Available Tasks Section */}
         <section className="bg-white rounded-2xl border border-slate-200 p-6">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
@@ -745,7 +739,6 @@ if (lastReset !== today) {
             </h2>
           </div>
 
-          {/* Categories Filter - Only show if onboarding is complete */}
           {hasCompletedOnboarding && (
             <div className="mb-8">
               <div className="flex gap-3 overflow-x-auto scrollbar-hide py-2">
@@ -770,7 +763,6 @@ if (lastReset !== today) {
             </div>
           )}
 
-          {/* Task Grid */}
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {filteredTasks.map((task) => {
               const myTask = myTaskMap[task.id];
@@ -779,6 +771,17 @@ if (lastReset !== today) {
               const cfg = myTask ? statusConfig[myTask.status] : null;
               const Icon = cfg?.icon;
               const isOnboardingTask = !hasCompletedOnboarding && task.id === onboardingTask?.id;
+              
+              const todayCompletedCount = myTasks.filter(t => 
+                new Date(t.startedAt).toDateString() === new Date().toDateString() &&
+                ['completed', 'approved'].includes(t.status)
+              ).length;
+              
+              const maxDaily = userProfile?.isVIP
+                ? VIP_CONFIG[userProfile.tier?.replace('VIP', '')]?.dailyTasks || 2
+                : 2;
+              
+              const dailyLimitReached = todayCompletedCount >= maxDaily;
 
               return (
                 <div
@@ -791,12 +794,10 @@ if (lastReset !== today) {
                     ${isOnboardingTask ? "ring-2 ring-amber-400 shadow-lg" : ""}
                   `}
                 >
-                  {/* Accent bar */}
                   <div className={`absolute top-0 left-0 w-1 h-full ${
                     isDone ? "bg-slate-300" : isOnboardingTask ? "bg-gradient-to-b from-green-400 to-emerald-500" : "bg-gradient-to-b from-amber-400 to-orange-500"
                   }`}></div>
 
-                  {/* Onboarding Badge */}
                   {isOnboardingTask && (
                     <div className="absolute top-3 right-3 bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full flex items-center gap-1">
                       <Star className="w-3 h-3" />
@@ -805,7 +806,6 @@ if (lastReset !== today) {
                   )}
 
                   <div className="p-4 pl-5 flex-1 flex flex-col">
-                    {/* Header with badges */}
                     <div className="flex justify-between items-start mb-3">
                       <div className="flex flex-wrap gap-1.5 min-w-0 flex-1">
                         <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${difficultyColors[task.difficulty]}`}>
@@ -824,7 +824,6 @@ if (lastReset !== today) {
                       </div>
                     </div>
 
-                    {/* Task Title */}
                     <h4 className={`
                       font-semibold mb-4 line-clamp-3 leading-snug flex-1 min-h-0
                       transition-colors group-hover:text-slate-900
@@ -833,21 +832,27 @@ if (lastReset !== today) {
                       {task.title}
                     </h4>
 
-                    {/* Action Button */}
                     <button
-                      onClick={() => isInProgress ? navigate(`/working/${task.id}`) : startTask(task)}
-                      disabled={isDone || dailyTasksRemaining === 0}
+                      onClick={() => {
+                        if (isDone) return; // Do nothing if task is done
+                        if (isInProgress) {
+                          navigate(`/working/${task.id}`);
+                        } else if (dailyLimitReached) {
+                          setShowVIPModal(true); // Show VIP modal if daily limit reached
+                        } else {
+                          startTask(task);
+                        }
+                      }}
+                      disabled={isDone}
                       className={`
                         w-full py-2.5 rounded-lg font-semibold text-sm 
                         flex items-center justify-center gap-2 transition-all
                         relative overflow-hidden group/btn flex-shrink-0
                         ${isDone
                           ? "bg-slate-100 text-slate-400 cursor-not-allowed"
-                          : dailyTasksRemaining > 0
-                          ? isOnboardingTask 
+                          : isOnboardingTask 
                             ? "bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:shadow-lg hover:shadow-green-400/25 hover:scale-[1.02]"
-                            : "bg-gradient-to-r from-amber-400 to-orange-500 text-slate-900 hover:shadow-lg hover:shadow-amber-400/25 hover:scale-[1.02]"
-                          : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                            : "bg-gradient-to-r from-amber-400 to-orange-500 text-slate-900 hover:shadow-lg hover:shadow-amber-400/25 hover:scale-[1.02] cursor-pointer"
                         }
                       `}
                     >
@@ -863,15 +868,15 @@ if (lastReset !== today) {
                           CONTINUE
                           <ChevronRight className="w-4 h-4 flex-shrink-0 transition-transform group-hover/btn:translate-x-0.5" />
                         </span>
-                      ) : dailyTasksRemaining > 0 ? (
+                      ) : !dailyLimitReached ? (
                         <span className="flex items-center gap-2 truncate">
                           {isOnboardingTask ? 'START ONBOARDING' : 'START TASK'}
                           <ChevronRight className="w-4 h-4 flex-shrink-0 transition-transform group-hover/btn:translate-x-0.5" />
                         </span>
                       ) : (
                         <span className="flex items-center gap-2 truncate">
-                          <Lock className="w-4 h-4 flex-shrink-0" />
-                          <span>VIP Only</span>
+                          <Crown className="w-4 h-4 flex-shrink-0" />
+                          <span>Upgrade to VIP</span>
                         </span>
                       )}
                     </button>
@@ -884,108 +889,210 @@ if (lastReset !== today) {
       </main>
 
 
-{/* VIP Modal */}
 {showVIPModal && (
-  <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 md:p-4">
-    <div className="bg-white/95 backdrop-blur-xl rounded-2xl p-5 md:p-8 max-w-lg w-full shadow-2xl border border-amber-400/20 overflow-y-auto max-h-[90vh]">
+  <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div className="bg-gradient-to-br from-white to-slate-50/90 backdrop-blur-xl rounded-2xl p-6 md:p-8 max-w-2xl w-full shadow-2xl border border-amber-200/50 overflow-y-auto max-h-[90vh]">
 
       {/* Header */}
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl md:text-2xl font-black text-slate-800">Upgrade to VIP</h2>
-        <button onClick={() => setShowVIPModal(false)} className="p-1.5 hover:bg-slate-100 rounded-lg">
-          <X className="w-5 h-5" />
+      <div className="flex justify-between items-start mb-6">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <Crown className="w-6 h-6 text-amber-500" />
+            <h2 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-amber-600 to-orange-600 bg-clip-text text-transparent">
+              Upgrade to VIP
+            </h2>
+          </div>
+          <p className="text-slate-600 text-sm">Unlock premium features and maximize your earnings</p>
+        </div>
+        <button 
+          onClick={() => setShowVIPModal(false)} 
+          className="p-2 hover:bg-slate-100 rounded-xl transition-colors"
+        >
+          <X className="w-5 h-5 text-slate-500" />
         </button>
       </div>
 
- <ul className="text-slate-600 text-sm md:text-base mb-5 list-disc list-inside space-y-1">
-  <li>Maximize your earning potential every day</li>
-  <li>Unlock more daily tasks for faster progress</li>
-  <li>Receive priority processing and support</li>
-  <li>Enjoy faster and smoother withdrawals</li>
-  <li>Upgrade instantly and start earning more today</li>
-</ul>
+      {/* Value Proposition */}
+      <div className="bg-gradient-to-r from-blue-50 to-amber-50/50 border border-blue-200/50 rounded-xl p-4 mb-6">
+        <div className="flex items-start gap-3">
+          <Sparkles className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
+          <div>
+            <h3 className="font-semibold text-blue-900 mb-1">Ready to accelerate your earnings?</h3>
+            <p className="text-sm text-blue-700/80">
+              VIP members earn <span className="font-bold">2-3x more</span> daily and enjoy exclusive benefits 
+              designed to maximize your income potential.
+            </p>
+          </div>
+        </div>
+      </div>
 
+      {/* Benefits List */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+        {[
+          { icon: TrendingUp, text: "Higher daily earning limits", highlight: "Earn 2-3x more daily" },
+          { icon: Zap, text: "More daily tasks", highlight: "Up to 3x task capacity" },
+          { icon: Clock, text: "Priority processing", highlight: "Faster withdrawals" },
+          { icon: Headphones, text: "Dedicated support", highlight: "24-48h response time" },
+          { icon: Shield, text: "Premium status", highlight: "Verified VIP badge" },
+          { icon: Gift, text: "Special bonuses", highlight: "Exclusive offers" }
+        ].map(({ icon: Icon, text, highlight }, index) => (
+          <div key={index} className="flex items-center gap-3 p-3 bg-white/80 rounded-lg border border-slate-200/80">
+            <div className="p-2 bg-amber-100 rounded-lg">
+              <Icon className="w-4 h-4 text-amber-600" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-slate-800">{text}</p>
+              <p className="text-xs text-amber-600 font-semibold">{highlight}</p>
+            </div>
+          </div>
+        ))}
+      </div>
 
       {/* VIP Tiers */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
-        {Object.entries(VIP_CONFIG).map(([tier, config]) => {
-          const isSelected = selectedVIP === tier;
-          const isRecommended = tier === "Silver"; // Recommended tier
-          return (
-            <label
-              key={tier}
-              className={`relative cursor-pointer p-4 rounded-xl border-2 transition-all flex flex-col items-center ${
-                isSelected
-                  ? 'border-amber-500 bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-md'
-                  : 'border-slate-300 bg-white hover:border-slate-400'
-              }`}
-            >
-              <input
-                type="radio"
-                name="vipTier"
-                value={tier}
-                checked={isSelected}
-                onChange={(e) => setSelectedVIP(e.target.value)}
-                className="sr-only"
-              />
+      <div className="mb-6">
+        <h3 className="text-lg font-bold text-slate-800 mb-3">Choose Your VIP Plan</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {Object.entries(VIP_CONFIG).map(([tier, config]) => {
+            const isSelected = selectedVIP === tier;
+            const isRecommended = tier === "Silver";
+            const isPopular = tier === "Gold";
+            
+            return (
+              <label
+                key={tier}
+                className={`relative cursor-pointer p-5 rounded-xl border-2 transition-all duration-300 ${
+                  isSelected
+                    ? 'border-amber-500 bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-lg scale-[1.02]'
+                    : 'border-slate-300 bg-white hover:border-slate-400 hover:shadow-md'
+                } ${isPopular ? 'ring-2 ring-amber-300 ring-offset-2' : ''}`}
+              >
+                <input
+                  type="radio"
+                  name="vipTier"
+                  value={tier}
+                  checked={isSelected}
+                  onChange={(e) => setSelectedVIP(e.target.value)}
+                  className="sr-only"
+                />
 
-              {isRecommended && (
-                <span className="absolute -top-3 right-2 bg-green-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
-                  ⭐ Recommended
-                </span>
-              )}
+                {isRecommended && (
+                  <span className="absolute -top-2 left-1/2 transform -translate-x-1/2 bg-green-500 text-white text-xs px-3 py-1 rounded-full font-bold whitespace-nowrap">
+                    ⭐ Most Popular
+                  </span>
+                )}
 
-              <Crown className={`w-7 h-7 mb-2 ${isSelected ? 'text-white' : 'text-amber-500'}`} />
-              <h3 className={`font-black text-base ${isSelected ? 'text-white' : 'text-slate-800'}`}>
-                {tier} VIP
-              </h3>
-              <p className={`text-2xl font-black my-1 ${isSelected ? 'text-white' : 'text-slate-900'}`}>
-                ${config.priceUSD}
-              </p>
-              <p className={`text-xs ${isSelected ? 'text-white/80' : 'text-slate-500'}`}>
-                {formatKES(config.priceUSD)}
-              </p>
-              <p className={`mt-2 text-sm font-bold ${isSelected ? 'text-white' : 'text-green-600'}`}>
-                {config.dailyTasks} Tasks/Day
-              </p>
-            </label>
-          );
-        })}
+                <div className="text-center">
+                  <Crown className={`w-8 h-8 mb-3 mx-auto ${isSelected ? 'text-white' : 'text-amber-500'}`} />
+                  <h3 className={`font-bold text-lg mb-2 ${isSelected ? 'text-white' : 'text-slate-800'}`}>
+                    {tier} VIP
+                  </h3>
+                  
+                  <div className="mb-3">
+                    <p className={`text-3xl font-black ${isSelected ? 'text-white' : 'text-slate-900'}`}>
+                      ${config.priceUSD}
+                    </p>
+                    <p className={`text-sm ${isSelected ? 'text-white/90' : 'text-slate-600'}`}>
+                      {formatKES(config.priceUSD)}
+                    </p>
+                  </div>
+
+                  <div className={`px-3 py-2 rounded-lg mb-3 ${
+                    isSelected ? 'bg-white/20' : 'bg-slate-100'
+                  }`}>
+                    <p className={`text-sm font-semibold ${isSelected ? 'text-white' : 'text-slate-800'}`}>
+                      {config.dailyTasks} Daily Tasks
+                    </p>
+                    <p className={`text-xs ${isSelected ? 'text-white/80' : 'text-slate-600'}`}>
+                      {tier === 'Bronze' ? '2x more earning potential' : 
+                       tier === 'Silver' ? '3x more earning potential' : 
+                       'Maximum earning capacity'}
+                    </p>
+                  </div>
+
+                  <div className="text-left space-y-1.5">
+                    <p className={`text-xs ${isSelected ? 'text-white/90' : 'text-slate-600'}`}>
+                      • {config.dailyTasks} tasks per day
+                    </p>
+                    <p className={`text-xs ${isSelected ? 'text-white/90' : 'text-slate-600'}`}>
+                      • Priority withdrawals
+                    </p>
+                    <p className={`text-xs ${isSelected ? 'text-white/90' : 'text-slate-600'}`}>
+                      • {tier === 'Gold' ? '24h' : '48h'} support
+                    </p>
+                  </div>
+                </div>
+              </label>
+            );
+          })}
+        </div>
       </div>
 
-      {/* M-Pesa Input */}
-      <div className="mb-5">
-        <label className="block text-sm font-bold text-slate-700 mb-1">M-Pesa Number</label>
-        <input
-          type="tel"
-          value={mpesaNumber}
-          onChange={(e) => setMpesaNumber(e.target.value)}
-          placeholder="07..., 01..., or +254712345678"
-          className="w-full px-3 py-2.5 rounded-lg border-2 border-green-400 focus:ring-2 focus:ring-green-400/20 text-sm"
-        />
+      {/* Payment Section */}
+      <div className="bg-slate-50/80 rounded-xl p-5 border border-slate-200/60">
+        <div className="mb-4">
+          <label className="block text-sm font-semibold text-slate-700 mb-2">
+            M-Pesa Number
+          </label>
+          <input
+            type="tel"
+            value={mpesaNumber}
+            onChange={(e) => setMpesaNumber(e.target.value)}
+            placeholder="Enter your M-Pesa number (07XX XXX XXX)"
+            className="w-full px-4 py-3 rounded-lg border-2 border-green-400 focus:border-green-500 focus:ring-2 focus:ring-green-400/30 transition-all text-base"
+          />
+          <p className="text-xs text-slate-500 mt-1">
+            You'll receive an STK Push to complete payment securely
+          </p>
+        </div>
+
+        <button
+          onClick={handleRealVIPUpgrade}
+          disabled={isProcessing || !selectedVIP || !isValidMpesaNumber(mpesaNumber)}
+          className={`w-full py-4 rounded-lg font-bold text-lg flex items-center justify-center gap-3 transition-all duration-300 ${
+            selectedVIP && isValidMpesaNumber(mpesaNumber)
+              ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]'
+              : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+          } ${isProcessing ? 'opacity-80' : ''}`}
+        >
+          {isProcessing ? (
+            <>
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Processing Upgrade...
+            </>
+          ) : (
+            <>
+              <Smartphone className="w-5 h-5" />
+              Upgrade to {selectedVIP || 'VIP'} - {selectedVIP ? `$${VIP_CONFIG[selectedVIP]?.priceUSD}` : ''}
+            </>
+          )}
+        </button>
+
+        {/* Trust Indicators */}
+        <div className="mt-4 text-center space-y-2">
+          <div className="flex items-center justify-center gap-4 text-xs text-slate-500">
+            <div className="flex items-center gap-1">
+              <Shield className="w-3 h-3 text-green-500" />
+              Secure Payment
+            </div>
+            <div className="flex items-center gap-1">
+              <Lock className="w-3 h-3 text-green-500" />
+              Encrypted
+            </div>
+            <div className="flex items-center gap-1">
+              <Clock className="w-3 h-3 text-green-500" />
+              Instant Access
+            </div>
+          </div>
+          
+          <p className="text-xs text-slate-500">
+            Upgrade in seconds • Cancel anytime • 100% Satisfaction Guaranteed
+          </p>
+        </div>
       </div>
-
-      {/* Payment Button */}
-      <button
-        onClick={handleRealVIPUpgrade}
-        disabled={isProcessing || !selectedVIP || !isValidMpesaNumber(mpesaNumber)}
-        className={`w-full py-3 rounded-lg font-black text-base flex items-center justify-center gap-2 transition-all ${
-          selectedVIP && isValidMpesaNumber(mpesaNumber)
-            ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:shadow-lg hover:scale-[1.02]'
-            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-        } ${isProcessing ? 'opacity-70' : ''}`}
-      >
-        {isProcessing ? 'Processing your upgrade…' : <>Pay with M-Pesa <Smartphone className="w-4 h-4" /></>}
-      </button>
-
-      <p className="text-[11px] text-slate-500 text-center mt-3">
-        You'll receive an STK Push shortly. Enter your PIN to confirm the payment.
-      </p>
     </div>
   </div>
 )}
 
-      {/* Notification Panel */}
       {showNotifications && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-start justify-end p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-y-auto">
@@ -1033,7 +1140,6 @@ if (lastReset !== today) {
           </div>
         </div>
       )}
-
       <ToastContainer position="bottom-right" theme="light" />
     </div>
   );

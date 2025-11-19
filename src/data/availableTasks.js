@@ -2056,7 +2056,43 @@ const availableTasks = [
         required: true
       }
     ]
-  }
+  },
+  {
+  id: 'task51',
+  title: 'Analyze Social Media Trends',
+  category: 'Research',
+  paymentAmount: 35,
+  duration: '45m',
+  difficulty: 'Intermediate',
+  questions: [
+    {
+      id: 'q1',
+      type: 'text',
+      question: 'Identify one trending topic on social media today and summarize it in your own words.',
+      required: true
+    },
+    {
+      id: 'q2',
+      type: 'opinion',
+      question: 'Which trend description sounds most engaging? sampleA: “A rapid surge in online discussions.”, sampleB: “A viral topic gaining massive attention.”, sampleC: “A widely shared theme shaping conversations.”',
+      options: ['A', 'B', 'C'],
+      required: true
+    },
+    {
+      id: 'q3',
+      type: 'text',
+      question: 'Explain why you think this trend gained popularity.',
+      required: true
+    },
+    {
+      id: 'q4',
+      type: 'file',
+      question: 'Upload a screenshot or document showing examples of posts related to the trend.',
+      acceptedFormats: '.png,.jpg,.jpeg,.pdf,.docx',
+      required: true
+    }
+  ]
+}
 ];
 
 export default availableTasks;
