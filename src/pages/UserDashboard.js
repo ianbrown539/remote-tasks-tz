@@ -358,95 +358,109 @@ useEffect(() => {
   };
 
   const handleRealVIPUpgrade = async () => {
-    if (!selectedVIP) return toast.error('Select a VIP tier');
-    const normalized = normalizePhoneNumber(mpesaNumber);
-    if (!normalized || !isValidMpesaNumber(mpesaNumber))
-      return toast.error('Invalid M-Pesa number');
+  if (!selectedVIP) return toast.error('Select a VIP tier');
+  const normalized = normalizePhoneNumber(mpesaNumber);
+  if (!normalized || !isValidMpesaNumber(mpesaNumber))
+    return toast.error('Invalid M-Pesa number');
 
-    setIsProcessing(true);
-    const clientReference = `VIP_${currentUser.uid}_${Date.now()}`;
-    const amount = VIP_CONFIG[selectedVIP].priceUSD * 129;
-    let poll = null;
+  setIsProcessing(true);
+  const clientReference = `VIP_${currentUser.uid}_${Date.now()}`;
+  const amount = VIP_CONFIG[selectedVIP].priceUSD * 129;
+  let poll = null;
 
-    try {
-      const init = await fetch('/api/stk-push', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phoneNumber: normalized,
-          amount,
-          reference: clientReference,
-        }),
-      });
-      const { success, payheroReference, error } = await init.json();
+  try {
+    const init = await fetch('/api/stk-push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phoneNumber: normalized,
+        amount,
+        reference: clientReference,
+      }),
+    });
+    const { success, payheroReference, error } = await init.json();
 
-      if (!success) throw new Error(error || 'STK push failed');
-      if (!payheroReference) throw new Error('Missing PayHero reference');
+    if (!success) throw new Error(error || 'STK push failed');
+    if (!payheroReference) throw new Error('Missing PayHero reference');
 
-      toast.info(`STK push sent to ${mpesaNumber}…`, { autoClose: 5000 });
+    toast.info(`STK push sent to ${mpesaNumber}…`, { autoClose: 8000 });
 
-      poll = setInterval(async () => {
-        try {
-          const statusRes = await fetch(
-            `/api/transaction-status?reference=${encodeURIComponent(payheroReference)}`
-          );
-          const { success, status, error } = await statusRes.json();
+    // Start polling
+    poll = setInterval(async () => {
+      try {
+        const statusRes = await fetch(
+          `/api/transaction-status?reference=${encodeURIComponent(payheroReference)}`
+        );
+        const { success, status, error } = await statusRes.json();
 
-          if (!success) throw new Error(error);
+        if (!success) throw new Error(error || 'Status check failed');
 
-          if (status === 'SUCCESS') {
-            clearInterval(poll);
-            toast.success('Payment confirmed!');
-            await finalizeVIPUpgrade();
-          } else if (['FAILED', 'CANCELLED'].includes(status)) {
-            clearInterval(poll);
-            toast.error('Payment failed');
-            setIsProcessing(false);
-          }
-        } catch (e) {
-          console.error(e);
-        }
-      }, 3000);
-
-      setTimeout(() => {
-        if (poll) {
+        if (status === 'SUCCESS') {
           clearInterval(poll);
-          if (isProcessing) {
-            toast.warn('Payment timed out');
-            setIsProcessing(false);
-          }
+          toast.success('Payment confirmed! Upgrading your account...');
+
+          // Finalize upgrade and close modal
+          await finalizeVIPUpgrade(); // This already closes modal + resets state
+
+          // Critical: Ensure processing stops and modal closes even if something fails later
+          setIsProcessing(false);
+          setShowVIPModal(false);
+        } 
+        else if (['FAILED', 'CANCELLED'].includes(status)) {
+          clearInterval(poll);
+          toast.error('Payment failed or was cancelled');
+          setIsProcessing(false); // Allow retry
         }
-      }, 120_000);
-    } catch (e) {
-      toast.error(e.message || 'Upgrade failed');
-      setIsProcessing(false);
-    }
-  };
+      } catch (e) {
+        console.error('Polling error:', e);
+        // Don't kill the loop on transient errors
+      }
+    }, 3000);
+
+    // Timeout after 2 minutes
+    setTimeout(() => {
+      if (poll) {
+        clearInterval(poll);
+        if (isProcessing) {
+          toast.warn('Payment timed out. Check your phone and try again.');
+          setIsProcessing(false);
+        }
+      }
+    }, 120_000);
+
+  } catch (e) {
+    toast.error(e.message || 'Upgrade failed');
+    setIsProcessing(false);
+  }
+};
 
   const finalizeVIPUpgrade = async () => {
-    const newMax = VIP_CONFIG[selectedVIP].dailyTasks;
+  const newMax = VIP_CONFIG[selectedVIP].dailyTasks;
 
-    await updateDoc(doc(db, 'users', currentUser.uid), {
-      isVIP: true,
-      tier: `${selectedVIP}VIP`,
-      dailyTasksRemaining: newMax,
-      lastTaskResetDate: serverTimestamp(),
-      vipUpgradedAt: serverTimestamp(),
-    });
+  await updateDoc(doc(db, 'users', currentUser.uid), {
+    isVIP: true,
+    tier: `${selectedVIP}VIP`,
+    dailyTasksRemaining: newMax,
+    lastTaskResetDate: serverTimestamp(),
+    vipUpgradedAt: serverTimestamp(),
+  });
 
-    setDailyTasksRemaining(newMax);
-    setUserProfile((p) => ({ ...p, isVIP: true, tier: `${selectedVIP}VIP` }));
+  setDailyTasksRemaining(newMax);
+  setUserProfile(prev => ({ ...prev, isVIP: true, tier: `${selectedVIP}VIP` }));
 
-    toast.success(`${selectedVIP} VIP activated! ${newMax} tasks/day unlocked!`, {
-      icon: <Crown className="w-6 h-6 text-amber-500" />,
-    });
-    setShowConfetti(true);
-    setTimeout(() => setShowConfetti(false), 5000);
-    setShowVIPModal(false);
-    setSelectedVIP('');
-    setMpesaNumber('');
-    setIsProcessing(false);
-  };
+  toast.success(`${selectedVIP} VIP Activated! ${newMax} tasks/day unlocked!`, {
+    icon: <Crown className="w-6 h-6 text-amber-500" />,
+  });
+
+  setShowConfetti(true);
+  setTimeout(() => setShowConfetti(false), 5000);
+
+  // Critical: Close modal and reset form
+  setShowVIPModal(false);
+  setSelectedVIP('');
+  setMpesaNumber('');
+  setIsProcessing(false); // Extra safety
+};
 
   if (!currentUser) {
     return (
