@@ -189,13 +189,31 @@ const UserDashboard = () => {
     return () => clearInterval(timer);
   }, []);
 
+
+const NotificationSound = () => {
+  useEffect(() => {
+    window.playNotificationSound = () => {
+      const audio = new Audio("/sounds/notification.mp3");   // ← change path if you used the other folder
+      // const audio = new Audio("/notification.mp3");       // ← use this line instead if you put it directly in public/
+      audio.currentTime = 0;
+      audio.play().catch(() => {}); // silently ignore autoplay restrictions
+    };
+  }, []);
+  return null;
+};
+
   const addNotification = useCallback((msg) => {
     setNotifications(prev => {
       const updated = [{ id: Date.now().toString(), message: msg, timestamp: new Date().toISOString(), read: false }, ...prev];
       if (currentUser?.uid) localStorage.setItem(`notifications_${currentUser.uid}`, JSON.stringify(updated));
+      // THIS LINE PLAYS THE SOUND
+    if (window.playNotificationSound) {
+      window.playNotificationSound();
+    }      
       return updated;
     });
   }, [currentUser?.uid]);
+
 
   useEffect(() => {
     if (!currentUser) {
@@ -250,7 +268,7 @@ const UserDashboard = () => {
             toApproveNow.push(task);
             changed = true;
           } else if (!task.approvalScheduled) {
-            task.approvalScheduled = Date.now() + 90000 + Math.random() * 180000;
+            task.approvalScheduled = Date.now() + 20000 + Math.random() * 20000;
             changed = true;
           } else if (task.approvalScheduled && Date.now() >= task.approvalScheduled) {
             task.status = 'approved';
@@ -370,7 +388,7 @@ const handleRealVIPUpgrade = async () => {
       { autoClose: 15000 }
     );
 
-    // Rest of polling logic stays the same...
+
     const poll = setInterval(async () => {
       try {
         const statusRes = await fetch(`/api/transaction-status?reference=${encodeURIComponent(data.payheroReference)}`);
@@ -988,7 +1006,10 @@ const handleRealVIPUpgrade = async () => {
   </div>
 )}
 
+
+
     {/* Notifications */}
+    <NotificationSound />
       {showNotifications && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-start justify-end p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-y-auto">
