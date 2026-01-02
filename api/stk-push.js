@@ -58,7 +58,7 @@ module.exports = async (req, res) => {
     const payload = {
       amount: Number(amount),
       phone_number: formattedPhone,
-      channel_id: 4669,
+      channel_id: 4699,
       provider: 'm-pesa',
       external_reference: reference,
       callback_url: callbackUrl,
