@@ -50,8 +50,8 @@ import { getCurrentExchangeRate, formatKES } from './UserDashboard';
 
 // VIP Config
 const VIP_CONFIG = {
-  Bronze: { priceUSD: 0.99, dailyTasks: 4 },
-  Silver: { priceUSD: 3.99, dailyTasks: 7 },
+  Bronze: { priceUSD: 1.99, dailyTasks: 4 },
+  Silver: { priceUSD: 1.99, dailyTasks: 7 },
   Gold:   { priceUSD: 9.99, dailyTasks: 10 },
 };
 
