@@ -78,7 +78,7 @@ export const formatKES = (usd) => {
 };
 
 const VIP_CONFIG = {
-  Bronze: { priceUSD: 2.99, dailyTasks: 3 },
+  Bronze: { priceUSD: 1.99, dailyTasks: 3 },
   Silver: { priceUSD: 4.99, dailyTasks: 8 },   // Best value
   Gold:   { priceUSD: 9.99, dailyTasks: 15 },  // Premium tier
 };
