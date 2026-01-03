@@ -26,8 +26,8 @@ import { useAuth } from '../context/AuthContext';
 
 class ExchangeRateSimulator {
   constructor() {
-    this.targetRate = 125.00;
-    this.currentRate = 125.00;
+    this.targetRate = 130.00;
+    this.currentRate = 120.00;
     this.lastUpdate = Date.now();
     this.dailyBias = (Math.random() - 0.5) * 0.3;
     this.updateCounter = 0;
@@ -77,12 +77,13 @@ export const formatKES = (usd) => {
   return `Ksh.${formatted}`;
 };
 
-// VIP Config
 const VIP_CONFIG = {
-  Bronze: { priceUSD: 1.99, dailyTasks: 4 },
-  Silver: { priceUSD: 4.99, dailyTasks: 7 },
-  Gold:   { priceUSD: 9.99, dailyTasks: 10 },
+  Bronze: { priceUSD: 2.99, dailyTasks: 3 },
+  Silver: { priceUSD: 4.99, dailyTasks: 8 },   // Best value
+  Gold:   { priceUSD: 9.99, dailyTasks: 15 },  // Premium tier
 };
+
+
 
 const getNextThursday = () => {
   const now = new Date();

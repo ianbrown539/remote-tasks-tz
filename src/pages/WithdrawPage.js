@@ -48,11 +48,10 @@ import Confetti from 'react-confetti';
 import 'react-toastify/dist/ReactToastify.css';
 import { getCurrentExchangeRate, formatKES } from './UserDashboard';
 
-// VIP Config
 const VIP_CONFIG = {
-  Bronze: { priceUSD: 1.99, dailyTasks: 4 },
-  Silver: { priceUSD: 1.99, dailyTasks: 7 },
-  Gold:   { priceUSD: 9.99, dailyTasks: 10 },
+  Bronze: { priceUSD: 2.99, dailyTasks: 3 },
+  Silver: { priceUSD: 4.99, dailyTasks: 8 },   // Best value
+  Gold:   { priceUSD: 9.99, dailyTasks: 15 },  // Premium tier
 };
 
 const MIN_WITHDRAWAL_USD = 10.00;
