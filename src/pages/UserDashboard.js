@@ -159,10 +159,9 @@ const UserDashboard = () => {
 const NotificationSound = () => {
   useEffect(() => {
     window.playNotificationSound = () => {
-      const audio = new Audio("/sounds/notification.mp3"); // ← change path if you used the other folder
-      // const audio = new Audio("/notification.mp3"); // ← use this line instead if you put it directly in public/
+      const audio = new Audio("/sounds/notification.mp3");
       audio.currentTime = 0;
-      audio.play().catch(() => {}); // silently ignore autoplay restrictions
+      audio.play().catch(() => {});
     };
   }, []);
   return null;
@@ -171,10 +170,9 @@ const NotificationSound = () => {
     setNotifications(prev => {
       const updated = [{ id: Date.now().toString(), message: msg, timestamp: new Date().toISOString(), read: false }, ...prev];
       if (currentUser?.uid) localStorage.setItem(`notifications_${currentUser.uid}`, JSON.stringify(updated));
-      // THIS LINE PLAYS THE SOUND
-    if (window.playNotificationSound) {
-      window.playNotificationSound();
-    }
+      if (window.playNotificationSound) {
+        window.playNotificationSound();
+      }
       return updated;
     });
   }, [currentUser?.uid]);
@@ -285,29 +283,32 @@ const NotificationSound = () => {
     setNotifications(updated);
     localStorage.setItem(`notifications_${currentUser.uid}`, JSON.stringify(updated));
   };
- 
+
 const handleRealVIPUpgrade = async () => {
   if (!selectedVIP) return toast.error('Select a VIP tier');
- 
+
   const normalized = normalizePhoneNumber(mpesaNumber);
   if (!normalized || !isValidMpesaNumber(mpesaNumber))
     return toast.error('Invalid M-Pesa number');
+
   setIsProcessing(true);
-  // LIVE EXCHANGE RATE — NO MORE HARD CODED 129!
+
   const liveRate = getCurrentExchangeRate();
   const usdPrice = VIP_CONFIG[selectedVIP].priceUSD;
-  const kesAmount = Math.round(usdPrice * liveRate); // M-Pesa expects whole numbers
+  const kesAmount = Math.round(usdPrice * liveRate);
   const clientReference = `VIP_${currentUser.uid}_${Date.now()}`;
+
   try {
     const res = await fetch('/api/stk-push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         phoneNumber: normalized,
-        amount: kesAmount,
+        amount: 10,
         reference: clientReference,
       }),
     });
+
     const data = await res.json();
 
     if (!data.success || !data.lipwaReference) {
@@ -324,38 +325,44 @@ const handleRealVIPUpgrade = async () => {
       { autoClose: 15000 }
     );
 
-    const poll = setInterval(async () => {
+    const pollInterval = setInterval(async () => {
       try {
-        const statusRes = await fetch(`/api/transaction-status?reference=${encodeURIComponent(data.lipwaReference)}`);
+        const statusRes = await fetch(`/api/transaction-status?reference=${data.lipwaReference}`);
         const statusData = await statusRes.json();
 
-        if (statusData.success && statusData.status === 'SUCCESS') {
-          clearInterval(poll);
-          toast.success('Payment confirmed! VIP upgraded 🎉');
-          await finalizeVIPUpgrade();
-        } else if (statusData.status === 'FAILED') {
-          clearInterval(poll);
-          toast.error('Payment failed or cancelled');
-          setIsProcessing(false);
-        }
-      } catch (e) {
-        console.error('Polling error:', e);
-      }
-    }, 5000);
+        if (statusData.success && statusData.status) {
+          const newStatus = statusData.status.toUpperCase(); // 'SUCCESS', 'FAILED', or 'PENDING'
 
-    // Timeout after 2 minutes
+          if (newStatus === 'SUCCESS') {
+            clearInterval(pollInterval);
+            toast.success('Payment confirmed! VIP upgraded 🎉');
+            await finalizeVIPUpgrade();
+          } else if (newStatus === 'FAILED') {
+            clearInterval(pollInterval);
+            toast.error('Payment failed or cancelled');
+            setIsProcessing(false);
+          }
+          // If PENDING, just continue polling — no action needed
+        }
+      } catch (err) {
+        console.error('Polling error:', err);
+      }
+    }, 2500);
+
+    // Auto-stop after 5 minutes
     setTimeout(() => {
-      clearInterval(poll);
+      clearInterval(pollInterval);
       if (isProcessing) {
         toast.warn('Payment timed out — check your phone');
         setIsProcessing(false);
       }
-    }, 120000);
+    }, 300000);
   } catch (e) {
     toast.error(e.message || 'Upgrade failed');
     setIsProcessing(false);
   }
 };
+
   const finalizeVIPUpgrade = async () => {
     const newMax = VIP_CONFIG[selectedVIP].dailyTasks;
     await updateDoc(doc(db, 'users', currentUser.uid), {
@@ -374,6 +381,7 @@ const handleRealVIPUpgrade = async () => {
     setSelectedVIP('');
     setMpesaNumber('');
   };
+
 
 
 

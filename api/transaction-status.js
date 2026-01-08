@@ -5,7 +5,7 @@ if (process.env.NODE_ENV !== 'production') {
 const axios = require('axios');
 
 module.exports = async (req, res) => {
-  const { reference } = req.query; // This is the CheckoutRequestID (e.g., ws_CO_...)
+  const { reference } = req.query; // CheckoutRequestID e.g. ws_CO_...
 
   console.log(`[${new Date().toISOString()}] Status check for CheckoutRequestID: ${reference}`);
 
@@ -16,17 +16,19 @@ module.exports = async (req, res) => {
   const apiKey = process.env.LIPWA_API_KEY;
 
   if (!apiKey) {
+    console.error('Missing LIPWA_API_KEY');
     return res.status(500).json({ success: false, error: 'Server configuration error' });
   }
 
   try {
     const response = await axios.get(
-      `https://pay.lipwa.app/api/status?ref=${reference}`,
+      `https://pay.lipwa.app/api/status?ref=${encodeURIComponent(reference)}`,
       {
         headers: {
           Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
         },
-        timeout: 10000,
+        timeout: 15000, // Slightly increased for reliability
       }
     );
 
@@ -34,21 +36,31 @@ module.exports = async (req, res) => {
 
     console.log('Lipwa status response:', JSON.stringify(data, null, 2));
 
+    // Normalize Lipwa's raw status strings
     let normalizedStatus = 'PENDING';
-    if (data.status === 'payment.success') normalizedStatus = 'SUCCESS';
-    else if (data.status === 'payment.failed') normalizedStatus = 'FAILED';
-    // Lipwa uses "payment.failed" for both failed & cancelled
 
-    res.json({
+    if (data.status === 'payment.success') {
+      normalizedStatus = 'SUCCESS';
+    } else if (data.status === 'payment.failed') {
+      normalizedStatus = 'FAILED'; // Covers both failed and cancelled
+    } else if (data.status === 'payment.queued') {
+      normalizedStatus = 'PENDING';
+    }
+    // Any unknown status falls back to PENDING (safe)
+
+    return res.json({
       success: true,
       status: normalizedStatus,
-      data: data,
+      data: data, // Return raw data for frontend debugging if needed
     });
   } catch (error) {
-    console.error('Status check error:', error.response?.data || error.message);
-    res.status(500).json({
+    const errorMsg = error.response?.data?.message || error.message || 'Unknown error';
+    console.error('Status check error:', error.response?.data || errorMsg);
+
+    return res.status(500).json({
       success: false,
-      error: error.response?.data?.message || 'Failed to fetch status',
+      error: 'Failed to fetch transaction status',
+      details: errorMsg,
     });
   }
 };
