@@ -118,7 +118,7 @@ const UserDashboard = () => {
   const [myTasks, setMyTasks] = useState([]);
   const [showVIPModal, setShowVIPModal] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false); // FIXED
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedVIP, setSelectedVIP] = useState('');
   const [mpesaNumber, setMpesaNumber] = useState('');
@@ -304,7 +304,7 @@ const handleRealVIPUpgrade = async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         phoneNumber: normalized,
-        amount: 10,
+        amount: kesAmount,
         reference: clientReference,
       }),
     });
@@ -325,13 +325,16 @@ const handleRealVIPUpgrade = async () => {
       { autoClose: 15000 }
     );
 
+    // Set pending state immediately
+    setIsProcessing(false); // Allow user to try again if needed
+
     const pollInterval = setInterval(async () => {
       try {
         const statusRes = await fetch(`/api/transaction-status?reference=${data.lipwaReference}`);
         const statusData = await statusRes.json();
 
         if (statusData.success && statusData.status) {
-          const newStatus = statusData.status.toUpperCase(); // 'SUCCESS', 'FAILED', or 'PENDING'
+          const newStatus = statusData.status.toUpperCase();
 
           if (newStatus === 'SUCCESS') {
             clearInterval(pollInterval);
@@ -340,9 +343,8 @@ const handleRealVIPUpgrade = async () => {
           } else if (newStatus === 'FAILED') {
             clearInterval(pollInterval);
             toast.error('Payment failed or cancelled');
-            setIsProcessing(false);
           }
-          // If PENDING, just continue polling — no action needed
+          // PENDING → silently continue polling
         }
       } catch (err) {
         console.error('Polling error:', err);
@@ -352,10 +354,7 @@ const handleRealVIPUpgrade = async () => {
     // Auto-stop after 5 minutes
     setTimeout(() => {
       clearInterval(pollInterval);
-      if (isProcessing) {
-        toast.warn('Payment timed out — check your phone');
-        setIsProcessing(false);
-      }
+      toast.warn('Payment check timed out — if you completed it, refresh the page');
     }, 300000);
   } catch (e) {
     toast.error(e.message || 'Upgrade failed');
@@ -377,11 +376,9 @@ const handleRealVIPUpgrade = async () => {
     setShowConfetti(true);
     setTimeout(() => setShowConfetti(false), 7000);
     setShowVIPModal(false);
-    setIsProcessing(false);
     setSelectedVIP('');
     setMpesaNumber('');
   };
-
 
 
 
