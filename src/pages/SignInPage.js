@@ -59,9 +59,16 @@ function SignInPage() {
 
           {/* Left Side – Welcome Back (Compliant & Still Powerful) */}
           <div className="text-white space-y-8">
-            <div className="flex items-center space-x-3">
-              <div className="text-4xl font-black text-amber-400">Outlier AI</div>
-              <span className="text-sm bg-amber-400/20 px-3 py-1 rounded-full">by ComoAI Labs</span>
+              <div className="flex items-center space-x-3">
+              <Link
+                to="/"
+                className="text-4xl md:text-5xl font-extrabold flex items-center gap-3"
+              >
+                Remote<span className="text-amber-400">Tasks</span>
+                <span className="hidden sm:inline text-sm bg-amber-400/20 px-3 py-1 rounded-full">
+                  by HandshakeAI Labs
+                </span>
+              </Link>
             </div>
 
             <h1 className="text-5xl font-black leading-tight">
@@ -114,7 +121,7 @@ function SignInPage() {
           {/* Right Side – Sign In Form (unchanged design) */}
           <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl p-10 border border-amber-400/20">
             <div className="text-center mb-8">
-              <h2 className="text-3xl font-black text-slate-800">Sign In to Outlier AI</h2>
+              <h2 className="text-3xl font-black text-slate-800">Sign In to Remote Tasks</h2>
               <p className="text-gray-600 mt-2">Access your dashboard and continue working</p>
             </div>
 
@@ -170,7 +177,7 @@ function SignInPage() {
 
             <div className="mt-8 text-center text-sm text-gray-600">
               <p>
-                New to Outlier AI?{' '}
+                New to Remote Tasks?{' '}
                 <Link to="/signup" className="font-semibold text-amber-600 hover:underline">
                   Create free account
                 </Link>

@@ -1373,13 +1373,13 @@ const WithdrawPage = () => {
                     const myCode = profile?.referralCode || 'LOADING';
                     const baseUrl = window.location.origin;
                     const referralLink = `${baseUrl}/signup?ref=${myCode}`;
-                    const message = `Join Outlier AI and earn real money training AI!\n\nStart here: ${referralLink}\n\nI'll earn $5 when you sign up — and $15 when you go VIP!`;
+                    const message = `Join Remote Tasks and earn real money training AI!\n\nStart here: ${referralLink}\n\nI'll earn $5 when you sign up — and $15 when you go VIP!`;
 
                     if (navigator.share) {
                       try {
                         await navigator.share({
                           title: 'Earn Money Training AI!',
-                          text: 'Join me on Outlier AI!',
+                          text: 'Join me on Remote Tasks!',
                           url: referralLink,
                         });
                       } catch (err) {}

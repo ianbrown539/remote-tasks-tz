@@ -157,7 +157,7 @@ function SignUpPage() {
         }
       }
 
-      toast.success('Welcome to Outlier AI! Your account is ready.');
+      toast.success('Welcome to Remote Tasks! Your account is ready.');
       navigate('/dashboard');
 
   } catch (err) {
@@ -191,10 +191,18 @@ function SignUpPage() {
 
         {/* Left Side – Hero (Compliant Version) */}
         <div className="text-white space-y-8">
-          <div className="flex items-center space-x-3">
-            <div className="text-4xl font-black text-amber-400">Outlier AI</div>
-            <span className="text-sm bg-amber-400/20 px-3 py-1 rounded-full">by ComoAI Labs</span>
-          </div>
+         <div className="flex items-center space-x-3">
+  <Link
+    to="/"
+    className="text-4xl md:text-5xl font-extrabold flex items-center gap-3"
+  >
+    Remote<span className="text-amber-400">Tasks</span>
+    <span className="hidden sm:inline text-sm bg-amber-400/20 px-3 py-1 rounded-full">
+      by HandshakeAI Labs
+    </span>
+  </Link>
+</div>
+
 
           <h1 className="text-5xl font-black leading-tight">
             Start Contributing<br />

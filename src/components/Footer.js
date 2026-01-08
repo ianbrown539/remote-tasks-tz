@@ -16,9 +16,9 @@ function Footer() {
           {/* Brand */}
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <span className="text-xl font-black text-amber-400">Outlier AI</span>
+              <span className="text-xl font-black text-amber-400">Remote AI Tasks</span>
               <span className="text-xs bg-amber-400/20 px-2 py-0.5 rounded-full">
-                by ComoAI Labs
+                by HandshakeAI Labs
               </span>
             </div>
             <p className="text-slate-300 leading-relaxed">
@@ -60,7 +60,7 @@ function Footer() {
               <li><button onClick={() => scrollToSection("how")} className="hover:text-amber-400">How It Works</button></li>
               <li><Link to="/success-stories" className="hover:text-amber-400">Member Stories</Link></li>
               <li>
-                <a href="https://discord.gg/outlierai" target="_blank" rel="noreferrer" className="hover:text-amber-400">
+                <a href="https://discord.gg/remote-tasks" target="_blank" rel="noreferrer" className="hover:text-amber-400">
                   Join Discord
                 </a>
               </li>
@@ -82,7 +82,7 @@ function Footer() {
           <div>
             <h4 className="text-base font-bold mb-3 text-amber-400">Support</h4>
             <ul className="space-y-2 text-slate-300">
-              <li><a href="mailto:support@outlierai.com" className="hover:text-amber-400">support@outlierai.com</a></li>
+              <li><a href="mailto:support@remote-tasks.com" className="hover:text-amber-400">support@remote-tasks.com</a></li>
               <li><Link to="/contact" className="hover:text-amber-400">Contact Us</Link></li>
               <li><Link to="/terms" className="hover:text-amber-400">Terms of Service</Link></li>
               <li><Link to="/privacy" className="hover:text-amber-400">Privacy Policy</Link></li>
@@ -92,11 +92,11 @@ function Footer() {
 
         {/* Bottom Bar */}
         <div className="pt-6 border-t border-white/10 flex flex-col md:flex-row justify-between items-center text-xs text-slate-400">
-          <p>© 2025 Outlier AI by ComoAI Labs. All rights reserved.</p>
+          <p>© 2025 Remote Tasks by HandshakeAI Labs. All rights reserved.</p>
           <div className="flex gap-4 mt-3 md:mt-0">
-            <a href="https://twitter.com/outlierai" target="_blank" rel="noreferrer" className="hover:text-amber-400">Twitter</a>
-            <a href="https://linkedin.com/company/outlierai" target="_blank" rel="noreferrer" className="hover:text-amber-400">LinkedIn</a>
-            <a href="https://youtube.com/@outlierai" target="_blank" rel="noreferrer" className="hover:text-amber-400">YouTube</a>
+            <a href="https://twitter.com/remote-tasks" target="_blank" rel="noreferrer" className="hover:text-amber-400">Twitter</a>
+            <a href="https://linkedin.com/company/remote-tasks" target="_blank" rel="noreferrer" className="hover:text-amber-400">LinkedIn</a>
+            <a href="https://youtube.com/@remote-tasks" target="_blank" rel="noreferrer" className="hover:text-amber-400">YouTube</a>
           </div>
         </div>
       </div>

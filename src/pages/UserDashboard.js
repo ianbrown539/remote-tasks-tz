@@ -413,7 +413,7 @@ const handleRealVIPUpgrade = async () => {
                   <Briefcase className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-xl font-black text-slate-900">Outlier AI</h1>
+                  <h1 className="text-xl font-black text-slate-900">Remote Tasks</h1>
                   <p className="text-xs text-slate-500">AI Training Platform</p>
                 </div>
               </div>
@@ -459,7 +459,7 @@ const handleRealVIPUpgrade = async () => {
                 <Star className="w-8 h-8 text-white" />
               </div>
               <div className="flex-1">
-                <h3 className="text-xl font-black mb-2">Welcome to Outlier AI! 🎉</h3>
+                <h3 className="text-xl font-black mb-2">Welcome to Remote Tasks! 🎉</h3>
                 <p className="text-slate-800 mb-3">
                   Complete your first onboarding task below to unlock all available tasks and start earning!
                 </p>

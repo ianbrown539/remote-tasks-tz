@@ -37,8 +37,8 @@ function Header() {
       <nav className="max-w-7xl mx-auto px-4 py-5 flex justify-between items-center">
         {/* Logo */}
         <Link to="/" className="flex items-center space-x-3">
-          <div className="text-3xl font-black text-amber-400">Outlier AI</div>
-          <span className="hidden sm:inline text-xs bg-amber-400/20 text-amber-300 px-2 py-1 rounded">by ComoAI Labs</span>
+          <div className="text-3xl font-black text-amber-400">Remote Tasks</div>
+          <span className="hidden sm:inline text-xs bg-amber-400/20 text-amber-300 px-2 py-1 rounded">by HandshakeAI Labs</span>
         </Link>
 
         {/* Desktop Menu */}
@@ -119,7 +119,7 @@ function Header() {
                 to="/signup"
                 className="bg-amber-400 text-slate-900 font-black text-2xl px-12 py-6 rounded-full hover:bg-amber-300 transform hover:scale-105 transition shadow-2xl"
               >
-                Yes! Join Outlier AI – 100% Free
+                Yes! Join Remote Tasks – 100% Free
               </Link>
               <button
                 onClick={() => scrollToSection('tasks')}
