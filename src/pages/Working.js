@@ -6,7 +6,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import confetti from 'canvas-confetti';
 import {
   Clock, Upload, CheckCircle, ArrowLeft, Play, Pause,
-  ChevronRight, AlertCircle, Send
+  ChevronRight, AlertCircle, Send, X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import availableTasks from '../data/availableTasks';
@@ -34,7 +34,7 @@ const Working = () => {
   useEffect(() => {
     if (currentUser === null) return;
     if (!currentUser) {
-      toast.info('Please sign in to access your tasks', { icon: '🔒' });
+      toast.info('Please sign in to access your tasks');
       navigate('/signin', { replace: true });
     }
   }, [currentUser, navigate]);
@@ -92,7 +92,7 @@ const Working = () => {
     }
     setUploadedFiles(prev => ({ ...prev, [questionId]: file }));
     setAnswers(prev => ({ ...prev, [questionId]: file.name }));
-    toast.success('File uploaded successfully');
+    toast.success('File uploaded');
   };
 
   const handleDragOver = e => { e.preventDefault(); setIsDragging(true); };
@@ -120,14 +120,14 @@ const Working = () => {
       setCurrentQuestion(p => p + 1);
       if (getProgress() === 100) {
         confetti({
-          particleCount: 120,
-          spread: 80,
-          origin: { y: 0.8 },
-          colors: ['#84cc16', '#22c55e', '#10b981', '#14b8a6', '#06b6d4']
+          particleCount: 100,
+          spread: 70,
+          origin: { y: 0.6 },
+          colors: ['#84cc16', '#22c55e', '#10b981']
         });
       }
     } else {
-      toast.error('Please complete this question');
+      toast.error('Complete this question first');
     }
   };
 
@@ -165,21 +165,21 @@ const Working = () => {
       localStorage.setItem(`myTasks_${currentUser.uid}`, JSON.stringify(savedTasks));
 
       confetti({
-        particleCount: 250,
-        spread: 100,
+        particleCount: 150,
+        spread: 90,
         origin: { y: 0.6 },
-        colors: ['#84cc16', '#22c55e', '#10b981', '#14b8a6', '#06b6d4']
+        colors: ['#84cc16', '#22c55e', '#10b981']
       });
 
-      toast.success('Task submitted successfully! 🎉');
+      toast.success('Task submitted successfully!');
 
       if (isOnboardingTask) {
-        toast.info('Instant approval in progress... Welcome aboard!', { autoClose: 8000 });
+        toast.info('Welcome aboard! Onboarding approved instantly.');
       } else {
-        toast.info('Approval in 1–5 minutes — check your balance!', { autoClose: 6000 });
+        toast.info('Approval in 1–5 minutes — check your balance soon.');
       }
 
-      setTimeout(() => navigate('/dashboard'), 3000);
+      setTimeout(() => navigate('/dashboard'), 2500);
     } catch (err) {
       console.error(err);
       toast.error('Submission failed');
@@ -190,21 +190,20 @@ const Working = () => {
 
   const toggleTimer = () => {
     setIsActive(!isActive);
-    toast.info(isActive ? 'Timer paused' : 'Timer resumed', { autoClose: 1500 });
   };
 
   const handleLeaveTask = () => {
-    if (window.confirm('Leave task? Your progress is saved automatically.')) {
+    if (window.confirm('Leave this task? Progress is saved automatically.')) {
       navigate('/dashboard');
     }
   };
 
   if (loading || !task) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-green-950 via-green-900 to-emerald-900 flex items-center justify-center">
+      <div className="min-h-screen bg-green-950 flex items-center justify-center">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-lime-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-lg text-green-100">Loading task...</p>
+          <div className="w-12 h-12 border-4 border-lime-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-green-200">Loading task...</p>
         </div>
       </div>
     );
@@ -213,239 +212,234 @@ const Working = () => {
   const currentQ = questions[currentQuestion];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-950 via-green-900 to-emerald-900">
-      {/* Header */}
-      <header className="bg-black/40 backdrop-blur-xl border-b border-white/10 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-5 py-4 flex justify-between items-center">
-          <button
-            onClick={handleLeaveTask}
-            className="flex items-center gap-2 text-green-100 hover:text-white transition"
-          >
-            <ArrowLeft className="w-5 h-5" /> Dashboard
-          </button>
-          <div className="flex items-center gap-4 bg-white/10 px-5 py-3 rounded-full border border-lime-400/30">
-            <Clock className="w-5 h-5 text-lime-400" />
-            <span className="font-bold text-white text-lg">{formatTime(seconds)}</span>
-            <button onClick={toggleTimer} className="text-lime-400 hover:text-lime-300">
-              {isActive ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+    <>
+      <div className="min-h-screen bg-green-950 text-white">
+        <ToastContainer position="top-center" theme="dark" autoClose={3000} />
+
+        {/* Compact Header */}
+        <header className="bg-green-900/50 backdrop-blur border-b border-white/10 sticky top-0 z-40">
+          <div className="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
+            <button
+              onClick={handleLeaveTask}
+              className="flex items-center gap-2 text-green-200 hover:text-white text-sm font-medium"
+            >
+              <ArrowLeft className="w-4 h-4" /> Back to Dashboard
             </button>
-          </div>
-        </div>
-      </header>
 
-      <div className="max-w-7xl mx-auto px-5 py-8">
-        {/* Task Header */}
-        <div className="bg-white/10 backdrop-blur-xl rounded-2xl border border-lime-400/20 p-8 mb-8 shadow-xl">
-          <div className="flex justify-between items-start mb-6">
-            <div>
-              <div className="flex gap-4 mb-4">
-                <span className="px-4 py-2 bg-lime-400/20 text-lime-300 text-sm font-bold rounded-full border border-lime-400/40">
-                  {task.category}
-                </span>
-                <span className="px-4 py-2 bg-emerald-400/20 text-emerald-300 text-sm font-bold rounded-full border border-emerald-400/40">
-                  {getProgress()}% Complete
-                </span>
-              </div>
-              <h1 className="text-3xl font-black text-white mb-2">{task.title}</h1>
-              <p className="text-lg text-green-200">Question {currentQuestion + 1} of {questions.length}</p>
-            </div>
-            <div className="text-right">
-              <div className="text-4xl font-black text-lime-400">${task.paymentAmount}</div>
-              <p className="text-sm text-green-300">Paid after approval</p>
-            </div>
-          </div>
-          <div className="mt-6 h-4 bg-white/10 rounded-full overflow-hidden shadow-inner">
-            <div
-              className="h-full bg-gradient-to-r from-lime-400 to-green-500 transition-all duration-700 rounded-full shadow-lg"
-              style={{ width: `${getProgress()}%` }}
-            />
-          </div>
-        </div>
-
-        <div className="grid lg:grid-cols-4 gap-8">
-          {/* Question Sidebar */}
-          <div className="bg-white/10 backdrop-blur-xl rounded-2xl border border-lime-400/20 p-6 space-y-3">
-            <h3 className="text-lg font-bold text-lime-400 mb-4">Questions</h3>
-            {questions.map((q, i) => (
-              <button
-                key={q.id}
-                onClick={() => setCurrentQuestion(i)}
-                className={`
-                  w-full text-left px-5 py-4 rounded-xl text-base font-semibold transition-all flex justify-between items-center shadow-sm
-                  ${i === currentQuestion
-                    ? 'bg-gradient-to-r from-lime-400 to-green-500 text-slate-900 shadow-lg'
-                    : isQuestionAnswered(q)
-                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 hover:bg-emerald-500/30'
-                    : 'text-green-200 hover:bg-white/10 border border-white/10'
-                  }
-                `}
-              >
-                <span>Q{i + 1}</span>
-                {isQuestionAnswered(q) && <CheckCircle className="w-5 h-5" />}
+            <div className="flex items-center gap-3 bg-green-800/50 px-4 py-2 rounded-full border border-lime-400/30">
+              <Clock className="w-4 h-4 text-lime-400" />
+              <span className="font-mono text-white">{formatTime(seconds)}</span>
+              <button onClick={toggleTimer} className="text-lime-400 hover:text-lime-300">
+                {isActive ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
               </button>
-            ))}
+            </div>
+          </div>
+        </header>
+
+        <div className="max-w-6xl mx-auto px-4 py-6">
+          {/* Task Summary Bar */}
+          <div className="bg-green-900/60 backdrop-blur rounded-xl border border-lime-400/20 p-5 mb-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h1 className="text-2xl font-bold text-white">{task.title}</h1>
+                <p className="text-green-300 text-sm mt-1">
+                  Question {currentQuestion + 1} of {questions.length} • {getProgress()}% complete
+                </p>
+              </div>
+              <div className="text-right">
+                <div className="text-3xl font-bold text-lime-400">${task.paymentAmount}</div>
+                <p className="text-green-400 text-xs">Paid after approval</p>
+              </div>
+            </div>
+
+            {/* Slim Progress Bar */}
+            <div className="mt-4 h-2 bg-green-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-lime-400 to-emerald-500 transition-all duration-500"
+                style={{ width: `${getProgress()}%` }}
+              />
+            </div>
           </div>
 
-          {/* Main Question Area */}
-          <div className="lg:col-span-3 space-y-8">
-            <div className="bg-white/10 backdrop-blur-xl rounded-2xl border border-lime-400/20 p-10 shadow-2xl">
-              <div className="flex items-start justify-between mb-8">
-                <div>
-                  <div className="flex gap-4 mb-6">
+          <div className="grid lg:grid-cols-4 gap-6">
+            {/* Compact Question List */}
+            <aside className="lg:col-span-1">
+              <div className="bg-green-900/60 backdrop-blur rounded-xl border border-lime-400/20 p-4">
+                <h3 className="text-sm font-semibold text-lime-400 uppercase tracking-wider mb-3">Questions</h3>
+                <div className="space-y-2">
+                  {questions.map((q, i) => (
+                    <button
+                      key={q.id}
+                      onClick={() => setCurrentQuestion(i)}
+                      className={`
+                        w-full text-left px-4 py-3 rounded-lg text-sm font-medium flex items-center justify-between transition
+                        ${i === currentQuestion
+                          ? 'bg-gradient-to-r from-lime-400 to-emerald-500 text-green-950 shadow-md'
+                          : isQuestionAnswered(q)
+                          ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
+                          : 'text-green-300 hover:bg-white/5'
+                        }
+                      `}
+                    >
+                      <span>Q{i + 1}</span>
+                      {isQuestionAnswered(q) && <CheckCircle className="w-4 h-4" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </aside>
+
+            {/* Main Content */}
+            <main className="lg:col-span-3">
+              <div className="bg-green-900/60 backdrop-blur rounded-xl border border-lime-400/20 p-6 md:p-8">
+                {/* Question Header */}
+                <div className="mb-6">
+                  <div className="flex gap-3 mb-4">
                     <span className={`
-                      px-5 py-2 text-sm font-bold rounded-full border
-                      ${currentQ.type === 'text' ? 'bg-purple-400/20 text-purple-300 border-purple-400/40' :
-                        currentQ.type === 'opinion' ? 'bg-blue-400/20 text-blue-300 border-blue-400/40' :
-                        'bg-orange-400/20 text-orange-300 border-orange-400/40'}
+                      px-3 py-1 text-xs font-bold rounded-full
+                      ${currentQ.type === 'text' ? 'bg-purple-400/20 text-purple-300' :
+                        currentQ.type === 'opinion' ? 'bg-blue-400/20 text-blue-300' :
+                        'bg-orange-400/20 text-orange-300'}
                     `}>
-                      {currentQ.type === 'text' ? 'Text Answer' : currentQ.type === 'opinion' ? 'Multiple Choice' : 'File Upload'}
+                      {currentQ.type === 'text' ? 'Text' : currentQ.type === 'opinion' ? 'Choice' : 'Upload'}
                     </span>
                     {currentQ.required && (
-                      <span className="px-5 py-2 text-sm font-bold bg-red-500/20 text-red-300 rounded-full border border-red-500/40">
+                      <span className="px-3 py-1 text-xs font-bold bg-red-500/20 text-red-300 rounded-full">
                         Required
                       </span>
                     )}
                   </div>
-                  <h2 className="text-2xl font-bold text-white leading-relaxed">{currentQ.question}</h2>
+                  <h2 className="text-xl md:text-2xl font-semibold text-white leading-relaxed">
+                    {currentQ.question}
+                  </h2>
                 </div>
-              </div>
 
-              {/* Answer Input */}
-              <div className="mt-8">
-                {currentQ.type === 'text' && (
-                  <textarea
-                    value={answers[currentQ.id] || ''}
-                    onChange={e => handleTextAnswer(currentQ.id, e.target.value)}
-                    placeholder="Type your detailed response here..."
-                    className="w-full p-6 rounded-2xl bg-white/5 border border-lime-400/30 text-white placeholder-green-300 focus:border-lime-400 focus:outline-none focus:ring-4 focus:ring-lime-400/20 transition resize-none text-lg"
-                    rows={8}
-                  />
-                )}
-
-                {currentQ.type === 'opinion' && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {currentQ.options?.map((opt, i) => (
-                      <button
-                        key={i}
-                        onClick={() => handleOptionSelect(currentQ.id, opt)}
-                        className={`
-                          p-6 rounded-2xl border-2 text-lg font-medium transition-all shadow-md
-                          ${answers[currentQ.id] === opt
-                            ? 'border-lime-400 bg-gradient-to-br from-lime-400/20 to-green-500/20 text-white shadow-xl scale-105'
-                            : 'border-white/20 bg-white/5 hover:border-lime-400/50 hover:bg-white/10 text-green-100'
-                          }
-                        `}
-                      >
-                        {opt}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {currentQ.type === 'file' && (
-                  <div>
-                    {uploadedFiles[currentQ.id] ? (
-                      <div className="bg-gradient-to-br from-emerald-500/20 to-green-600/20 border-2 border-emerald-400/50 rounded-2xl p-10 text-center shadow-xl">
-                        <CheckCircle className="w-20 h-20 text-emerald-400 mx-auto mb-6" />
-                        <p className="text-2xl font-bold text-white mb-2">{uploadedFiles[currentQ.id].name}</p>
-                        <p className="text-green-200 mb-6">File ready for submission</p>
-                        <button
-                          onClick={() => {
-                            setUploadedFiles(p => { const x = { ...p }; delete x[currentQ.id]; return x; });
-                            setAnswers(p => { const x = { ...p }; delete x[currentQ.id]; return x; });
-                          }}
-                          className="text-red-400 hover:text-red-300 font-medium"
-                        >
-                          Remove file
-                        </button>
-                      </div>
-                    ) : (
-                      <div
-                        onDragOver={handleDragOver}
-                        onDragLeave={handleDragLeave}
-                        onDrop={e => handleDrop(e, currentQ.id)}
-                        onClick={() => fileInputRef.current?.click()}
-                        className={`
-                          border-4 border-dashed rounded-2xl p-20 text-center cursor-pointer transition-all shadow-xl
-                          ${isDragging ? 'border-lime-400 bg-lime-400/10' : 'border-white/30 hover:border-lime-400 hover:bg-white/5'}
-                        `}
-                      >
-                        <Upload className="w-20 h-20 text-lime-400 mx-auto mb-6" />
-                        <p className="text-2xl font-bold text-white mb-2">Drop file here or click to upload</p>
-                        <p className="text-lg text-green-300">Max 10MB • {currentQ.acceptedFormats || 'Any format'}</p>
-                      </div>
-                    )}
-                    <input ref={fileInputRef} type="file" onChange={e => handleFileUpload(e, currentQ.id)} className="hidden" />
-                  </div>
-                )}
-              </div>
-
-              {currentQ.required && !isQuestionAnswered(currentQ) && (
-                <div className="mt-8 p-6 bg-orange-500/20 border-2 border-orange-400/50 rounded-2xl flex gap-4 shadow-lg">
-                  <AlertCircle className="w-8 h-8 text-orange-400 flex-shrink-0" />
-                  <p className="text-lg text-orange-200 font-medium">
-                    This question is required to proceed.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Navigation */}
-            <div className="flex justify-between items-center mt-10">
-              <button
-                onClick={handlePrevious}
-                disabled={currentQuestion === 0}
-                className="px-8 py-4 bg-white/10 hover:bg-white/20 rounded-2xl font-bold text-white disabled:opacity-50 transition text-lg"
-              >
-                Previous
-              </button>
-
-              {currentQuestion === questions.length - 1 ? (
-                <button
-                  onClick={handleSubmit}
-                  disabled={uploading || getProgress() < 100}
-                  className={`
-                    px-10 py-5 rounded-2xl font-black text-xl flex items-center gap-4 transition-all shadow-xl
-                    ${getProgress() === 100
-                      ? 'bg-gradient-to-r from-lime-400 to-green-500 text-slate-900 hover:shadow-2xl hover:shadow-lime-400/60 active:scale-98'
-                      : 'bg-white/10 text-green-300 cursor-not-allowed'
-                    }
-                  `}
-                >
-                  {uploading ? (
-                    <>Submitting... <div className="w-6 h-6 border-4 border-slate-900 border-t-transparent rounded-full animate-spin" /></>
-                  ) : (
-                    <>Submit Task <Send className="w-6 h-6" /></>
+                {/* Answer Input */}
+                <div className="mb-8">
+                  {currentQ.type === 'text' && (
+                    <textarea
+                      value={answers[currentQ.id] || ''}
+                      onChange={e => handleTextAnswer(currentQ.id, e.target.value)}
+                      placeholder="Enter your answer..."
+                      className="w-full p-4 rounded-lg bg-green-950/50 border border-green-700 text-white placeholder-green-400 focus:border-lime-400 focus:outline-none focus:ring-2 focus:ring-lime-400/30 transition"
+                      rows={6}
+                    />
                   )}
-                </button>
-              ) : (
-                <button
-                  onClick={handleNext}
-                  disabled={!canProceedToNext()}
-                  className={`
-                    px-10 py-5 rounded-2xl font-black text-xl flex items-center gap-4 transition-all shadow-xl
-                    ${canProceedToNext()
-                      ? 'bg-gradient-to-r from-lime-400 to-green-500 text-slate-900 hover:shadow-2xl hover:shadow-lime-400/60 active:scale-98'
-                      : 'bg-white/10 text-green-300 cursor-not-allowed'
-                    }
-                  `}
-                >
-                  Next Question <ChevronRight className="w-6 h-6" />
-                </button>
-              )}
-            </div>
+
+                  {currentQ.type === 'opinion' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {currentQ.options?.map((opt, i) => (
+                        <button
+                          key={i}
+                          onClick={() => handleOptionSelect(currentQ.id, opt)}
+                          className={`
+                            p-4 rounded-lg border text-left font-medium transition
+                            ${answers[currentQ.id] === opt
+                              ? 'border-lime-400 bg-lime-400/20 text-white shadow-md'
+                              : 'border-green-700 bg-green-950/50 hover:border-lime-400/50 text-green-100'
+                            }
+                          `}
+                        >
+                          {opt}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {currentQ.type === 'file' && (
+                    <div>
+                      {uploadedFiles[currentQ.id] ? (
+                        <div className="bg-emerald-500/20 border border-emerald-400/50 rounded-lg p-6 text-center">
+                          <CheckCircle className="w-12 h-12 text-emerald-400 mx-auto mb-3" />
+                          <p className="font-medium text-white">{uploadedFiles[currentQ.id].name}</p>
+                          <button
+                            onClick={() => {
+                              setUploadedFiles(p => { const x = { ...p }; delete x[currentQ.id]; return x; });
+                              setAnswers(p => { const x = { ...p }; delete x[currentQ.id]; return x; });
+                            }}
+                            className="mt-3 text-sm text-red-400 hover:text-red-300"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ) : (
+                        <div
+                          onDragOver={handleDragOver}
+                          onDragLeave={handleDragLeave}
+                          onDrop={e => handleDrop(e, currentQ.id)}
+                          onClick={() => fileInputRef.current?.click()}
+                          className={`
+                            border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition
+                            ${isDragging ? 'border-lime-400 bg-lime-400/10' : 'border-green-600 hover:border-lime-400'}
+                          `}
+                        >
+                          <Upload className="w-12 h-12 text-lime-400 mx-auto mb-4" />
+                          <p className="font-medium text-white mb-1">Drop file or click to upload</p>
+                          <p className="text-sm text-green-400">Max 10MB</p>
+                        </div>
+                      )}
+                      <input ref={fileInputRef} type="file" onChange={e => handleFileUpload(e, currentQ.id)} className="hidden" />
+                    </div>
+                  )}
+                </div>
+
+                {currentQ.required && !isQuestionAnswered(currentQ) && (
+                  <div className="mb-6 p-4 bg-orange-500/20 border border-orange-400/50 rounded-lg flex gap-3">
+                    <AlertCircle className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
+                    <p className="text-sm text-orange-200">This question is required.</p>
+                  </div>
+                )}
+
+                {/* Navigation */}
+                <div className="flex justify-between items-center">
+                  <button
+                    onClick={handlePrevious}
+                    disabled={currentQuestion === 0}
+                    className="px-6 py-3 bg-green-800 hover:bg-green-700 rounded-lg font-medium text-white disabled:opacity-50 transition"
+                  >
+                    Previous
+                  </button>
+
+                  {currentQuestion === questions.length - 1 ? (
+                    <button
+                      onClick={handleSubmit}
+                      disabled={uploading || getProgress() < 100}
+                      className={`
+                        px-8 py-3 rounded-lg font-bold flex items-center gap-3 transition
+                        ${getProgress() === 100
+                          ? 'bg-gradient-to-r from-lime-400 to-emerald-500 text-green-950 shadow-lg hover:shadow-xl'
+                          : 'bg-green-800 text-green-400 cursor-not-allowed'
+                        }
+                      `}
+                    >
+                      {uploading ? (
+                        <>Submitting... <div className="w-5 h-5 border-2 border-green-950 border-t-transparent rounded-full animate-spin" /></>
+                      ) : (
+                        <>Submit Task <Send className="w-5 h-5" /></>
+                      )}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleNext}
+                      disabled={!canProceedToNext()}
+                      className={`
+                        px-8 py-3 rounded-lg font-bold flex items-center gap-3 transition
+                        ${canProceedToNext()
+                          ? 'bg-gradient-to-r from-lime-400 to-emerald-500 text-green-950 shadow-lg hover:shadow-xl'
+                          : 'bg-green-800 text-green-400 cursor-not-allowed'
+                        }
+                      `}
+                    >
+                      Next <ChevronRight className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </main>
           </div>
         </div>
       </div>
-
-      <ToastContainer
-        position="top-right"
-        theme="light"
-        newestOnTop
-        closeOnClick
-        toastClassName="font-medium"
-      />
-    </div>
+    </>
   );
 };
 
