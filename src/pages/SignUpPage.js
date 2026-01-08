@@ -2,10 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { auth, db } from '../services/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc, getDoc, updateDoc, increment, arrayUnion, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
+import {
+  doc,
+  setDoc,
+  getDoc,
+  updateDoc,
+  increment,
+  arrayUnion,
+  serverTimestamp,
+  collection,
+  query,
+  where,
+  getDocs,
+} from 'firebase/firestore';
 import { toast } from 'react-toastify';
 
-// Referral code generator (unchanged – safe)
+// Referral code generator
 const generateReferralCode = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   const nums = '0123456789';
@@ -20,8 +32,8 @@ const generateReferralCode = () => {
 };
 
 function SignUpPage() {
-  const [searchParams] = useSearchParams(); // ← NEW: Read URL params
-  const referredByCode = searchParams.get('ref'); // ← Get referral code from URL
+  const [searchParams] = useSearchParams();
+  const referredByCode = searchParams.get('ref');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -34,8 +46,8 @@ function SignUpPage() {
   const getPasswordStrength = () => {
     if (password.length === 0) return { text: '', color: '' };
     if (password.length < 6) return { text: 'Weak', color: 'text-red-500' };
-    if (password.length < 10) return { text: 'Medium', color: 'text-amber-500' };
-    return { text: 'Strong', color: 'text-green-500' };
+    if (password.length < 10) return { text: 'Medium', color: 'text-yellow-500' };
+    return { text: 'Strong', color: 'text-lime-500' };
   };
 
   const isValidPhone = (num) => {
@@ -43,71 +55,33 @@ function SignUpPage() {
     return cleaned.length >= 10 && cleaned.length <= 15;
   };
 
-  // Show referral banner if came from a link
   useEffect(() => {
     if (referredByCode) {
-      toast.success(`Welcome! You're joining via a friend's invitation`, {
-        icon: 'Gift',
+      toast.success(`Welcome! You're joining via a friend's invitation 🎁`, {
         autoClose: 5000,
       });
     }
   }, [referredByCode]);
 
   const handleSignUp = async (e) => {
-  e.preventDefault();
-  setError('');
-  setLoading(true);
+    e.preventDefault();
+    setError('');
+    setLoading(true);
 
-  // Fixed: Separate setState calls from return statements
-  if (!name.trim()) {
-    setError('Full name is required');
-    setLoading(false);
-    return;
-  }
-  
-  if (!email.trim()) {
-    setError('Email is required');
-    setLoading(false);
-    return;
-  }
-  
-  if (!phone.trim()) {
-    setError('Phone number is required');
-    setLoading(false);
-    return;
-  }
-  
-  if (!isValidPhone(phone)) {
-    setError('Enter a valid phone number');
-    setLoading(false);
-    return;
-  }
-  
-  if (!password) {
-    setError('Password is required');
-    setLoading(false);
-    return;
-  }
-  
-  if (password !== confirmPassword) {
-    setError('Passwords do not match');
-    setLoading(false);
-    return;
-  }
-  
-  if (password.length < 6) {
-    setError('Password must be at least 6 characters');
-    setLoading(false);
-    return;
-  }
+    if (!name.trim()) { setError('Full name is required'); setLoading(false); return; }
+    if (!email.trim()) { setError('Email is required'); setLoading(false); return; }
+    if (!phone.trim()) { setError('Phone number is required'); setLoading(false); return; }
+    if (!isValidPhone(phone)) { setError('Enter a valid phone number'); setLoading(false); return; }
+    if (!password) { setError('Password is required'); setLoading(false); return; }
+    if (password !== confirmPassword) { setError('Passwords do not match'); setLoading(false); return; }
+    if (password.length < 6) { setError('Password must be at least 6 characters'); setLoading(false); return; }
 
-  try {
-    const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
-    const user = userCredential.user;
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      const user = userCredential.user;
 
-    const myReferralCode = generateReferralCode();
+      const myReferralCode = generateReferralCode();
 
-   // Create user profile
       await setDoc(doc(db, 'users', user.uid), {
         userId: user.uid,
         createdAt: serverTimestamp(),
@@ -115,7 +89,7 @@ function SignUpPage() {
         name: name.trim(),
         phone: phone.trim(),
         referralCode: myReferralCode,
-        referredBy: referredByCode || null, // ← Save who referred them
+        referredBy: referredByCode || null,
         totalReferrals: 0,
         vipReferrals: 0,
         referralEarnings: 0,
@@ -127,10 +101,9 @@ function SignUpPage() {
         hasDoneOnboardingTask: false,
         isVIP: false,
         tier: "standard",
-        dailyTasksRemaining: 2
+        dailyTasksRemaining: 2,
       });
 
-   // If they were referred → give $5 to referrer
       if (referredByCode) {
         const referrerQuery = await getDocs(
           query(collection(db, 'users'), where('referralCode', '==', referredByCode))
@@ -143,66 +116,59 @@ function SignUpPage() {
           await updateDoc(referrerRef, {
             totalReferrals: increment(1),
             referralEarnings: increment(5),
-            currentbalance: increment(5),  // ← THIS LINE ADDS $5 TO THEIR ACTUAL BALANCE!
+            currentbalance: increment(5),
             recentReferrals: arrayUnion({
               userId: user.uid,
               name: name.trim(),
               phone: phone.trim(),
               isVIP: false,
-            referredAt: Date.now()   // ← Fixed: now works perfectly
-            })
+              referredAt: Date.now(),
+            }),
           });
 
-          toast.success(`$5 added to your referrer's account!`, { icon: 'Money' });
+          toast.success(`$5 added to your referrer's account! 💰`);
         }
       }
 
-      toast.success('Welcome to Remote Tasks! Your account is ready.');
+      toast.success('Welcome to RemoTasks! Your account is ready.');
       navigate('/dashboard');
+    } catch (err) {
+      console.error('Signup error:', err);
+      let msg = 'Failed to create account. Please try again.';
 
-  } catch (err) {
-    console.error('Signup error:', err);
-    let msg = 'Failed to create account. Please try again.';
+      if (err.message.includes('timeout')) {
+        msg = 'Slow connection. Account may have been created — try logging in.';
+      } else if (err.code === 'auth/email-already-in-use') {
+        msg = 'This email is already registered. Please sign in.';
+      } else if (err.code === 'auth/invalid-email') {
+        msg = 'Invalid email address.';
+      } else if (err.code === 'auth/weak-password') {
+        msg = 'Password too weak. Use 6+ characters.';
+      } else if (err.code === 'auth/too-many-requests') {
+        msg = 'Too many attempts. Please wait a minute.';
+      }
 
-    if (err.message.includes('timeout')) {
-      msg = 'Slow connection. Account may have been created — try logging in.';
-    } else if (err.code === 'auth/email-already-in-use') {
-      msg = 'This email is already registered. Please sign in.';
-    } else if (err.code === 'auth/invalid-email') {
-      msg = 'Invalid email address.';
-    } else if (err.code === 'auth/weak-password') {
-      msg = 'Password too weak. Use 6+ characters.';
-    } else if (err.code === 'auth/too-many-requests') {
-      msg = 'Too many attempts. Please wait a minute.';
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
     }
-
-    setError(msg);
-    toast.error(msg);
-  } finally {
-    setLoading(false);
-  }
-};
-
-
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 flex items-center justify-center px-4 py-12">
+    <div className="min-h-screen bg-gradient-to-br from-green-950 via-green-900 to-emerald-900 flex items-center justify-center px-4 py-12">
       <div className="max-w-6xl w-full grid md:grid-cols-2 gap-12 items-center">
 
-        {/* Left Side – Hero (Compliant Version) */}
+        {/* Left Side – Hero */}
         <div className="text-white space-y-8">
-         <div className="flex items-center space-x-3">
-  <Link
-    to="/"
-    className="text-4xl md:text-5xl font-extrabold flex items-center gap-3"
-  >
-    Remote<span className="text-amber-400">Tasks</span>
-    <span className="hidden sm:inline text-sm bg-amber-400/20 px-3 py-1 rounded-full">
-      by HandshakeAI Labs
-    </span>
-  </Link>
-</div>
-
+          <div className="flex flex-col gap-3">
+            <Link to="/" className="text-4xl md:text-5xl font-extrabold flex items-center gap-3">
+              Remote AI <span className="text-lime-400">Tasks</span>
+            </Link>
+            <span className="text-sm bg-lime-400/20 px-3 py-1 rounded-full inline-block w-fit">
+              by HandshakeAI Labs
+            </span>
+          </div>
 
           <h1 className="text-5xl font-black leading-tight">
             Start Contributing<br />
@@ -210,42 +176,41 @@ function SignUpPage() {
             From Home
           </h1>
 
-          <p className="text-xl text-blue-100 leading-relaxed">
+          <p className="text-xl text-green-100 leading-relaxed">
             Join thousands of people worldwide helping train the next generation of AI.
             Work flexibly on your schedule — no experience required.
           </p>
 
-          {/* Replaced earnings box with safe, attractive benefits */}
           <div className="space-y-4 bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
             <div className="flex items-center gap-3">
-              <svg className="w-6 h-6 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-6 h-6 text-lime-400" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
               </svg>
               <span className="font-medium">Flexible remote tasks</span>
             </div>
             <div className="flex items-center gap-3">
-              <svg className="w-6 h-6 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-6 h-6 text-lime-400" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
               </svg>
               <span className="font-medium">Get paid weekly</span>
             </div>
             <div className="flex items-center gap-3">
-              <svg className="w-6 h-6 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-6 h-6 text-lime-400" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
               </svg>
               <span className="font-medium">Tasks available daily</span>
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-6 text-sm opacity-80">
+          <div className="flex flex-wrap gap-6 text-sm text-green-200">
             <div className="flex items-center gap-2">
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-5 h-5 text-lime-400" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
               </svg>
               Paid via PayPal, Bank Transfer, or M-Pesa
             </div>
             <div className="flex items-center gap-2">
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-5 h-5 text-lime-400" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
               </svg>
               Free to join • Cancel anytime
@@ -253,8 +218,8 @@ function SignUpPage() {
           </div>
         </div>
 
-        {/* Right Side – Form (Unchanged design, safe copy) */}
-        <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl p-10 border border-amber-400/20">
+        {/* Right Side – Form */}
+        <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl p-10 border border-lime-400/30">
           <div className="text-center mb-8">
             <h2 className="text-3xl font-black text-slate-800">Create Your Free Account</h2>
             <p className="text-gray-600 mt-2">Takes less than 2 minutes</p>
@@ -272,7 +237,7 @@ function SignUpPage() {
               placeholder="Full Name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400"
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-lime-500 focus:border-transparent"
               required
             />
 
@@ -281,7 +246,7 @@ function SignUpPage() {
               placeholder="Phone Number"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400"
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-lime-500 focus:border-transparent"
               required
             />
 
@@ -290,7 +255,7 @@ function SignUpPage() {
               placeholder="Email Address"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400"
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-lime-500 focus:border-transparent"
               required
             />
 
@@ -300,7 +265,7 @@ function SignUpPage() {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400"
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-lime-500 focus:border-transparent"
                 required
               />
               {password && (
@@ -315,18 +280,18 @@ function SignUpPage() {
               placeholder="Confirm Password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400"
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-lime-500 focus:border-transparent"
               required
             />
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-amber-400 to-orange-500 text-slate-900 font-black text-xl py-5 rounded-xl hover:shadow-2xl transform hover:scale-105 transition disabled:opacity-60 disabled:transform-none disabled:cursor-not-allowed"
+              className="w-full bg-gradient-to-r from-lime-400 to-green-500 text-slate-900 font-black text-xl py-5 rounded-xl hover:shadow-2xl hover:shadow-lime-400/50 transform hover:scale-105 transition disabled:opacity-60 disabled:transform-none disabled:cursor-not-allowed"
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-3">
-                  <div className="animate-spin rounded-full h-6 w-6 border-t-4 border-white"></div>
+                  <div className="animate-spin rounded-full h-6 w-6 border-t-4 border-slate-900"></div>
                   Creating Account...
                 </span>
               ) : (
@@ -337,7 +302,7 @@ function SignUpPage() {
 
           <div className="mt-8 text-center text-sm text-gray-600">
             Already have an account?{' '}
-            <Link to="/signin" className="font-bold text-amber-600 hover:underline">
+            <Link to="/signin" className="font-bold text-lime-600 hover:underline">
               Sign in
             </Link>
           </div>

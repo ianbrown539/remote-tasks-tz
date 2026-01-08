@@ -43,28 +43,23 @@ function LandingPage() {
   ];
 
   return (
-    <div className="bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 text-white">
+    <div className="bg-gradient-to-br from-green-950 via-green-900 to-emerald-900 text-white min-h-screen">
       {/* ===== HEADER ===== */}
-      <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? "bg-slate-900/95 backdrop-blur-md shadow-lg" : "bg-transparent"}`}>
+      <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? "bg-green-950/95 backdrop-blur-md shadow-lg" : "bg-transparent"}`}>
         <nav className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <Link
-  to="/"
-  className="text-4xl md:text-5xl font-extrabold flex items-center gap-3"
->
-  Remote<span className="text-amber-400">Tasks</span>
- 
-</Link>
-
+          <Link to="/" className="text-4xl md:text-5xl font-extrabold flex items-center gap-3">
+            Remote AI<span className="text-lime-400">Tasks</span>
+          </Link>
 
           {/* Desktop Nav */}
           <div className="hidden md:flex items-center gap-6 text-sm">
-            <button onClick={() => scrollTo("jobs")} className="hover:text-amber-400 transition">Tasks</button>
-            <button onClick={() => scrollTo("how")} className="hover:text-amber-400 transition">How It Works</button>
-            <span className="text-blue-200">Remote AI tasks • Weekly payments</span>
-            <Link to="/signin" className="hover:text-amber-400 transition">Log In</Link>
+            <button onClick={() => scrollTo("jobs")} className="hover:text-lime-400 transition">Tasks</button>
+            <button onClick={() => scrollTo("how")} className="hover:text-lime-400 transition">How It Works</button>
+            <span className="text-green-200">Remote AI tasks • Weekly payments</span>
+            <Link to="/signin" className="hover:text-lime-400 transition">Log In</Link>
             <Link
               to="/signup"
-              className="bg-gradient-to-r from-amber-400 to-orange-500 text-slate-900 font-semibold px-4 py-2 rounded-full hover:shadow-md transition"
+              className="bg-gradient-to-r from-lime-400 to-green-500 text-slate-900 font-semibold px-4 py-2 rounded-full hover:shadow-md hover:shadow-lime-300/50 transition"
             >
               Join Free
             </Link>
@@ -78,14 +73,14 @@ function LandingPage() {
 
         {/* Mobile Menu */}
         {mobileOpen && (
-          <div className="md:hidden bg-slate-900/95 backdrop-blur-md border-t border-white/10">
+          <div className="md:hidden bg-green-950/95 backdrop-blur-md border-t border-white/10">
             <div className="px-6 py-6 space-y-4 text-center">
-              <button onClick={() => scrollTo("jobs")} className="block text-base hover:text-amber-400">Tasks</button>
-              <button onClick={() => scrollTo("how")} className="block text-base hover:text-amber-400">How It Works</button>
-              <Link to="/signin" className="block text-base hover:text-amber-400">Log In</Link>
+              <button onClick={() => scrollTo("jobs")} className="block text-base hover:text-lime-400">Tasks</button>
+              <button onClick={() => scrollTo("how")} className="block text-base hover:text-lime-400">How It Works</button>
+              <Link to="/signin" className="block text-base hover:text-lime-400">Log In</Link>
               <Link
                 to="/signup"
-                className="block bg-gradient-to-r from-amber-400 to-orange-500 text-slate-900 font-semibold py-2 rounded-full"
+                className="block bg-gradient-to-r from-lime-400 to-green-500 text-slate-900 font-semibold py-2 rounded-full"
               >
                 Join Free
               </Link>
@@ -100,13 +95,13 @@ function LandingPage() {
           <h1 className="text-4xl md:text-5xl font-bold text-white leading-tight mb-4">
             Contribute to Cutting-Edge AI Development
           </h1>
-          <p className="text-lg text-blue-100 mb-8 max-w-2xl mx-auto">
+          <p className="text-lg text-green-100 mb-8 max-w-2xl mx-auto">
             Work remotely on flexible AI training tasks. No experience required. Receive weekly payments via PayPal, M-Pesa, or bank transfer.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-10">
             <Link
               to="/signup"
-              className="bg-gradient-to-r from-amber-400 to-orange-500 text-slate-900 font-semibold text-base px-6 py-3 rounded-full hover:shadow-md transition flex items-center justify-center gap-2"
+              className="bg-gradient-to-r from-lime-400 to-green-500 text-slate-900 font-semibold text-base px-6 py-3 rounded-full hover:shadow-md hover:shadow-lime-300/50 transition flex items-center justify-center gap-2"
             >
               Get Started <ArrowRight className="w-4 h-4" />
             </Link>
@@ -117,8 +112,8 @@ function LandingPage() {
               Explore Tasks
             </button>
           </div>
-          <div className="flex justify-center gap-6 text-sm text-blue-200 flex-wrap">
-            <span className="flex items-center gap-2"><Check className="w-4 h-4 text-green-400" /> Diverse task selection</span>
+          <div className="flex justify-center gap-6 text-sm text-green-200 flex-wrap">
+            <span className="flex items-center gap-2"><Check className="w-4 h-4 text-lime-400" /> Diverse task selection</span>
             <span className="flex items-center gap-2"><Clock className="w-4 h-4" /> Responsive support</span>
             <span className="flex items-center gap-2"><Users className="w-4 h-4" /> Global contributor network</span>
           </div>
@@ -129,19 +124,19 @@ function LandingPage() {
       <section id="jobs" className="py-16 px-4">
         <div className="max-w-6xl mx-auto text-center">
           <h2 className="text-3xl font-bold text-white mb-3">AI Training Opportunities</h2>
-          <p className="text-base text-blue-100 mb-8">Engage in tasks that shape the future of AI, with new projects added regularly</p>
+          <p className="text-base text-green-100 mb-8">Engage in tasks that shape the future of AI, with new projects added regularly</p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {jobs.map((job, i) => (
               <div
                 key={i}
-                className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 hover:border-amber-400/50 transition"
+                className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 hover:border-lime-400/50 transition"
               >
                 <h3 className="text-lg font-semibold text-white mb-2">{job.title}</h3>
-                <p className="text-base font-medium text-amber-400 mb-3">{job.pay}</p>
-                <p className="text-sm text-blue-100 mb-4">{job.desc}</p>
+                <p className="text-base font-medium text-lime-400 mb-3">{job.pay}</p>
+                <p className="text-sm text-green-100 mb-4">{job.desc}</p>
                 <Link
                   to="/signup"
-                  className="text-amber-400 font-medium text-sm hover:underline flex items-center justify-center gap-1"
+                  className="text-lime-400 font-medium text-sm hover:underline flex items-center justify-center gap-1"
                 >
                   Start Now <ArrowRight className="w-4 h-4" />
                 </Link>
@@ -155,16 +150,16 @@ function LandingPage() {
       <section id="how" className="py-16 px-4 bg-white/5">
         <div className="max-w-6xl mx-auto text-center">
           <h2 className="text-3xl font-bold text-white mb-3">Begin in Minutes</h2>
-          <p className="text-base text-blue-100 mb-8">A straightforward process to join our AI training platform</p>
+          <p className="text-base text-green-100 mb-8">A straightforward process to join our AI training platform</p>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             {steps.map((s) => (
               <div key={s.step} className="relative">
                 <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
-                  <div className="w-10 h-10 bg-amber-500 text-white rounded-full flex items-center justify-center text-base font-bold mb-3 mx-auto">
+                  <div className="w-10 h-10 bg-lime-500 text-white rounded-full flex items-center justify-center text-base font-bold mb-3 mx-auto">
                     {s.step}
                   </div>
                   <h3 className="font-semibold text-white mb-2 text-sm">{s.title}</h3>
-                  <p className="text-blue-200 text-xs">{s.desc}</p>
+                  <p className="text-green-200 text-xs">{s.desc}</p>
                 </div>
                 {s.step < 4 && (
                   <div className="hidden md:block absolute top-1/2 -right-3 w-6 h-0.5 bg-white/30 -translate-y-1/2" />
@@ -174,7 +169,7 @@ function LandingPage() {
           </div>
           <Link
             to="/signup"
-            className="mt-8 inline-block bg-gradient-to-r from-amber-400 to-orange-500 text-slate-900 font-semibold text-base px-6 py-3 rounded-full hover:shadow-md transition"
+            className="mt-8 inline-block bg-gradient-to-r from-lime-400 to-green-500 text-slate-900 font-semibold text-base px-6 py-3 rounded-full hover:shadow-md hover:shadow-lime-300/50 transition"
           >
             Join Now
           </Link>
@@ -187,12 +182,12 @@ function LandingPage() {
           <h2 className="text-3xl font-bold text-white mb-4">
             Shape the Future of AI
           </h2>
-          <p className="text-base text-blue-100 mb-6">
+          <p className="text-base text-green-100 mb-6">
             Join a global community of contributors working on innovative AI projects from anywhere
           </p>
           <Link
             to="/signup"
-            className="inline-block bg-gradient-to-r from-amber-400 to-orange-500 text-slate-900 font-semibold text-base px-6 py-3 rounded-full hover:shadow-md transition"
+            className="inline-block bg-gradient-to-r from-lime-400 to-green-500 text-slate-900 font-semibold text-base px-6 py-3 rounded-full hover:shadow-md hover:shadow-lime-300/50 transition"
           >
             Start Contributing
           </Link>
