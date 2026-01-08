@@ -19,11 +19,9 @@ import Confetti from 'react-confetti';
 import 'react-toastify/dist/ReactToastify.css';
 import availableTasks from '../data/availableTasks';
 import { useAuth } from '../context/AuthContext';
-
 // =============================
 // EXCHANGE RATE SIMULATOR (FIXED & CLEAN)
 // =============================
-
 class ExchangeRateSimulator {
   constructor() {
     this.targetRate = 130.00;
@@ -32,59 +30,45 @@ class ExchangeRateSimulator {
     this.dailyBias = (Math.random() - 0.5) * 0.3;
     this.updateCounter = 0;
   }
-
   getCurrentRate() {
     const now = Date.now();
     const secondsSinceLast = (now - this.lastUpdate) / 1000;
-
     if (secondsSinceLast > 15 + Math.random() * 30) {
       this._updateRate();
       this.lastUpdate = now;
     }
-
     return Math.round(this.currentRate * 10000) / 10000;
   }
-
   _updateRate() {
     this.updateCounter++;
-
     const noise = (Math.random() - 0.5) * 0.06;
     const distanceFromTarget = this.targetRate - this.currentRate;
     const reversion = distanceFromTarget * 0.04;
     const dayFraction = Date.now() / (86400 * 1000);
     const trend = this.dailyBias * (dayFraction - Math.floor(dayFraction));
-
     this.currentRate += noise + reversion + trend * 0.0001;
     this.currentRate = Math.max(120.00, Math.min(130.00, this.currentRate));
-
     if (this.updateCounter % 150 === 0) {
       this.targetRate += (Math.random() - 0.5) * 1.5;
       this.targetRate = Math.max(121, Math.min(129, this.targetRate));
     }
   }
 }
-
 // Single shared instance
 const exchangeRateSimulator = new ExchangeRateSimulator();
-
 // Public functions — NOW SAFE
 export const getCurrentExchangeRate = () => exchangeRateSimulator.getCurrentRate();
-
 export const formatKES = (usd) => {
   const rate = getCurrentExchangeRate();
   const kes = usd * rate;
   const formatted = kes.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   return `Ksh.${formatted}`;
 };
-
 const VIP_CONFIG = {
   Bronze: { priceUSD: 1.99, dailyTasks: 3 },
-  Silver: { priceUSD: 4.99, dailyTasks: 8 },   // Best value
-  Gold:   { priceUSD: 9.99, dailyTasks: 15 },  // Premium tier
+  Silver: { priceUSD: 4.99, dailyTasks: 8 }, // Best value
+  Gold: { priceUSD: 9.99, dailyTasks: 15 }, // Premium tier
 };
-
-
-
 const getNextThursday = () => {
   const now = new Date();
   const thursday = new Date(now);
@@ -92,7 +76,6 @@ const getNextThursday = () => {
   thursday.setHours(23, 59, 59, 0);
   return thursday;
 };
-
 const getLastThursday = () => {
   const now = new Date();
   const lastThursday = new Date(now);
@@ -101,27 +84,23 @@ const getLastThursday = () => {
   lastThursday.setHours(0, 0, 0, 0);
   return lastThursday;
 };
-
 const formatTime = (ms) => {
   const days = Math.floor(ms / 86400000);
   const hours = Math.floor((ms % 86400000) / 3600000);
   const minutes = Math.floor((ms % 3600000) / 60000);
   return `${days}d ${hours}h ${minutes}m`;
 };
-
 const difficultyColors = {
   Beginner: 'bg-green-100 text-green-700 border-green-200',
   Intermediate: 'bg-blue-100 text-blue-700 border-blue-200',
   Advanced: 'bg-purple-100 text-purple-700 border-purple-200',
   Expert: 'bg-red-100 text-red-700 border-red-200',
 };
-
 const statusConfig = {
   'in-progress': { label: 'In Progress', icon: PlayCircle, color: 'text-blue-600', bg: 'bg-blue-50' },
   completed: { label: 'Under Review', icon: RefreshCw, color: 'text-orange-600', bg: 'bg-orange-50' },
   approved: { label: 'Approved', icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-50' },
 };
-
 const normalizePhoneNumber = (input) => {
   if (!input) return null;
   const cleaned = input.replace(/\D/g, '');
@@ -130,14 +109,11 @@ const normalizePhoneNumber = (input) => {
   if (/^254[71]\d{8}$/.test(cleaned)) return cleaned;
   return null;
 };
-
 const isValidMpesaNumber = (input) =>
   /^0[17]\d{8}$/.test(input) || /^\+254[17]\d{8}$/.test(input);
-
 const UserDashboard = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
-
   const [userProfile, setUserProfile] = useState(null);
   const [myTasks, setMyTasks] = useState([]);
   const [showVIPModal, setShowVIPModal] = useState(false);
@@ -150,38 +126,29 @@ const UserDashboard = () => {
   const [timeLeft, setTimeLeft] = useState(getNextThursday() - new Date());
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
-
   const hasResetToday = useRef(false);
-
   // DERIVED VALUES
   const hasCompletedOnboarding = userProfile?.hasDoneOnboardingTask || false;
   const onboardingTask = availableTasks[0];
   const tasksToShow = hasCompletedOnboarding ? availableTasks : [onboardingTask];
   const categories = ['all', ...new Set(tasksToShow.map(t => t.category))];
   const filteredTasks = selectedCategory === 'all' ? tasksToShow : tasksToShow.filter(t => t.category === selectedCategory);
-
   const myTaskMap = {};
   myTasks.forEach(t => { myTaskMap[t.id.split('_')[0]] = t; });
-
   const todayTasks = myTasks.filter(t => new Date(t.startedAt).toDateString() === new Date().toDateString());
   const approvedCount = todayTasks.filter(t => t.status === 'approved').length;
   const todayEarnings = todayTasks.filter(t => t.status === 'approved').reduce((s, t) => s + t.paymentAmount, 0);
-
   const lastThursday = getLastThursday();
   const nextThursday = getNextThursday();
   const dateRange = `${lastThursday.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} - ${nextThursday.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
-
   const todayCompletedCount = myTasks.filter(t =>
     new Date(t.startedAt).toDateString() === new Date().toDateString() &&
     ['completed', 'approved'].includes(t.status)
   ).length;
-
   const maxDaily = userProfile?.isVIP
     ? VIP_CONFIG[userProfile.tier?.replace('VIP', '')]?.dailyTasks || 1
     : 1;
-
   const dailyLimitReached = todayCompletedCount >= maxDaily;
-
   // EFFECTS
   useEffect(() => {
     const timer = setInterval(() => {
@@ -189,20 +156,17 @@ const UserDashboard = () => {
     }, 1000);
     return () => clearInterval(timer);
   }, []);
-
-
 const NotificationSound = () => {
   useEffect(() => {
     window.playNotificationSound = () => {
-      const audio = new Audio("/sounds/notification.mp3");   // ← change path if you used the other folder
-      // const audio = new Audio("/notification.mp3");       // ← use this line instead if you put it directly in public/
+      const audio = new Audio("/sounds/notification.mp3"); // ← change path if you used the other folder
+      // const audio = new Audio("/notification.mp3"); // ← use this line instead if you put it directly in public/
       audio.currentTime = 0;
       audio.play().catch(() => {}); // silently ignore autoplay restrictions
     };
   }, []);
   return null;
 };
-
   const addNotification = useCallback((msg) => {
     setNotifications(prev => {
       const updated = [{ id: Date.now().toString(), message: msg, timestamp: new Date().toISOString(), read: false }, ...prev];
@@ -210,27 +174,22 @@ const NotificationSound = () => {
       // THIS LINE PLAYS THE SOUND
     if (window.playNotificationSound) {
       window.playNotificationSound();
-    }      
+    }
       return updated;
     });
   }, [currentUser?.uid]);
-
-
   useEffect(() => {
     if (!currentUser) {
       navigate('/signin', { replace: true });
       return;
     }
-
     const unsub = onSnapshot(doc(db, 'users', currentUser.uid), (snap) => {
       if (!snap.exists()) return;
       const data = snap.data();
       setUserProfile(data);
-
       const today = new Date().toLocaleDateString('en-CA');
       const lastReset = data.lastTaskResetDate?.toDate?.().toLocaleDateString('en-CA');
       const maxTasks = data.isVIP ? VIP_CONFIG[data.tier?.replace('VIP', '')]?.dailyTasks || 1 : 1;
-
       if (!hasResetToday.current && lastReset !== today) {
         hasResetToday.current = true;
         updateDoc(doc(db, 'users', currentUser.uid), {
@@ -239,30 +198,22 @@ const NotificationSound = () => {
         }).catch(() => {});
       }
     });
-
     const savedTasks = localStorage.getItem(`myTasks_${currentUser.uid}`);
     if (savedTasks) setMyTasks(JSON.parse(savedTasks));
-
     const savedNotifs = localStorage.getItem(`notifications_${currentUser.uid}`);
     if (savedNotifs) setNotifications(JSON.parse(savedNotifs));
-
     return () => unsub();
   }, [currentUser, navigate]);
-
   // AUTO-APPROVAL (Onboarding = instant)
   useEffect(() => {
     if (!currentUser) return;
-
     const interval = setInterval(() => {
       setMyTasks(prevTasks => {
         let changed = false;
         const toApproveNow = [];
-
         const updatedTasks = prevTasks.map(task => {
           if (task.status !== 'completed') return task;
-
           const isOnboarding = task.id.startsWith(availableTasks[0]?.id);
-
           if (isOnboarding && !userProfile?.hasDoneOnboardingTask) {
             task.status = 'approved';
             task.approvedAt = new Date();
@@ -279,11 +230,9 @@ const NotificationSound = () => {
           }
           return task;
         });
-
         if (toApproveNow.length > 0) {
           const total = toApproveNow.reduce((s, t) => s + t.paymentAmount, 0);
           const hasOnboarding = toApproveNow.some(t => t.id.startsWith(availableTasks[0]?.id));
-
           updateDoc(doc(db, 'users', currentUser.uid), {
             currentbalance: increment(total),
             thisMonthEarned: increment(total),
@@ -291,7 +240,6 @@ const NotificationSound = () => {
             ApprovedTasks: increment(toApproveNow.length),
             ...(hasOnboarding && { hasDoneOnboardingTask: true })
           });
-
           toApproveNow.forEach(task => {
             const msg = hasOnboarding
               ? `Welcome! $${task.paymentAmount.toFixed(2)} for onboarding task approved successfully !`
@@ -299,29 +247,23 @@ const NotificationSound = () => {
             toast.success(msg);
             addNotification(msg);
           });
-
           setShowConfetti(true);
           setTimeout(() => setShowConfetti(false), 6000);
         }
-
         if (changed) {
           localStorage.setItem(`myTasks_${currentUser.uid}`, JSON.stringify(updatedTasks));
         }
-
         return updatedTasks;
       });
     }, 5000);
-
     return () => clearInterval(interval);
   }, [currentUser, userProfile?.hasDoneOnboardingTask, addNotification]);
-
   // FUNCTIONS
   const startTask = (task) => {
     if (dailyLimitReached) {
       setShowVIPModal(true);
       return;
     }
-
     const newTask = {
       id: `${task.id}_${Date.now()}`,
       ...task,
@@ -330,54 +272,47 @@ const NotificationSound = () => {
       completedQuestions: 0,
       totalQuestions: task.questions.length,
     };
-
     setMyTasks(prev => {
       const updated = [...prev, newTask];
       localStorage.setItem(`myTasks_${currentUser.uid}`, JSON.stringify(updated));
       return updated;
     });
-
     toast.success('Task Started!', { icon: <Briefcase className="w-5 h-5" /> });
     navigate(`/working/${task.id}`);
   };
-
   const markAllRead = () => {
     const updated = notifications.map(n => ({ ...n, read: true }));
     setNotifications(updated);
     localStorage.setItem(`notifications_${currentUser.uid}`, JSON.stringify(updated));
   };
-
-  
+ 
 const handleRealVIPUpgrade = async () => {
   if (!selectedVIP) return toast.error('Select a VIP tier');
-  
+ 
   const normalized = normalizePhoneNumber(mpesaNumber);
-  if (!normalized || !isValidMpesaNumber(mpesaNumber)) 
+  if (!normalized || !isValidMpesaNumber(mpesaNumber))
     return toast.error('Invalid M-Pesa number');
-
   setIsProcessing(true);
-
   // LIVE EXCHANGE RATE — NO MORE HARD CODED 129!
   const liveRate = getCurrentExchangeRate();
   const usdPrice = VIP_CONFIG[selectedVIP].priceUSD;
   const kesAmount = Math.round(usdPrice * liveRate); // M-Pesa expects whole numbers
-
   const clientReference = `VIP_${currentUser.uid}_${Date.now()}`;
-
   try {
     const res = await fetch('/api/stk-push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         phoneNumber: normalized,
-        amount: kesAmount,                    // Now using real live rate
+        amount: kesAmount,
         reference: clientReference,
-        description: `${selectedVIP} VIP Upgrade • $${usdPrice} USD @ ${liveRate.toFixed(2)} KES/USD`,
       }),
     });
-
     const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'STK push failed');
+
+    if (!data.success || !data.lipwaReference) {
+      throw new Error(data.error || 'STK push failed');
+    }
 
     toast.info(
       <div className="text-xs">
@@ -389,17 +324,16 @@ const handleRealVIPUpgrade = async () => {
       { autoClose: 15000 }
     );
 
-
     const poll = setInterval(async () => {
       try {
-        const statusRes = await fetch(`/api/transaction-status?reference=${encodeURIComponent(data.payheroReference)}`);
+        const statusRes = await fetch(`/api/transaction-status?reference=${encodeURIComponent(data.lipwaReference)}`);
         const statusData = await statusRes.json();
 
-        if (statusData.status === 'SUCCESS') {
+        if (statusData.success && statusData.status === 'SUCCESS') {
           clearInterval(poll);
           toast.success('Payment confirmed! VIP upgraded 🎉');
           await finalizeVIPUpgrade();
-        } else if (['FAILED', 'CANCELLED'].includes(statusData.status)) {
+        } else if (statusData.status === 'FAILED') {
           clearInterval(poll);
           toast.error('Payment failed or cancelled');
           setIsProcessing(false);
@@ -417,13 +351,11 @@ const handleRealVIPUpgrade = async () => {
         setIsProcessing(false);
       }
     }, 120000);
-
   } catch (e) {
     toast.error(e.message || 'Upgrade failed');
     setIsProcessing(false);
   }
 };
-
   const finalizeVIPUpgrade = async () => {
     const newMax = VIP_CONFIG[selectedVIP].dailyTasks;
     await updateDoc(doc(db, 'users', currentUser.uid), {
@@ -433,7 +365,6 @@ const handleRealVIPUpgrade = async () => {
       lastTaskResetDate: serverTimestamp(),
       vipUpgradedAt: serverTimestamp(),
     });
-
     setUserProfile(prev => ({ ...prev, isVIP: true, tier: `${selectedVIP}VIP` }));
     toast.success(`${selectedVIP} VIP Activated! ${newMax} tasks/day unlocked!`);
     setShowConfetti(true);
@@ -443,6 +374,8 @@ const handleRealVIPUpgrade = async () => {
     setSelectedVIP('');
     setMpesaNumber('');
   };
+
+
 
   if (!currentUser || !userProfile) {
     return (
