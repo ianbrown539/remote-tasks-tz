@@ -418,7 +418,7 @@ const UserDashboard = () => {
                   <Briefcase className="w-6 h-6 text-slate-900" />
                 </div>
                 <div>
-                  <h1 className="text-xl font-black text-slate-900">Remo<span className="text-lime-500">Tasks</span></h1>
+                  <h1 className="text-xl font-black text-slate-900">Remote AI <span className="text-lime-500">Tasks</span></h1>
                   <p className="text-xs text-slate-500">AI Training Platform</p>
                 </div>
               </div>
@@ -460,7 +460,7 @@ const UserDashboard = () => {
             <div className="flex items-start gap-4">
               <Star className="w-8 h-8 text-yellow-300 flex-shrink-0" />
               <div>
-                <h3 className="text-xl font-black mb-2">Welcome to RemoTasks!</h3>
+                <h3 className="text-xl font-black mb-2">Welcome to Remote Tasks!</h3>
                 <p className="mb-3 opacity-95">
                   Complete your first onboarding task below to unlock all tasks and start earning real money.
                 </p>
