@@ -78,9 +78,9 @@ export const formatKES = (usd) => {
 };
 
 const VIP_CONFIG = {
-  Bronze: { priceUSD: 0.99, dailyTasks: 3 },
-  Silver: { priceUSD: 3.99, dailyTasks: 8 },
-  Gold:   { priceUSD: 8.99, dailyTasks: 15 },
+  Bronze: { priceUSD: 1.99, dailyTasks: 3 },
+  Silver: { priceUSD: 4.99, dailyTasks: 8 },
+  Gold:   { priceUSD: 9.99, dailyTasks: 15 },
 };
 
 const getNextThursday = () => {
