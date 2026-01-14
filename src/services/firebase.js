@@ -5,16 +5,16 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
-// Your AI-TRAINING-TASKS DB
- const firebaseConfig = {
- apiKey: "AIzaSyAp5CrpSIbVL3AFl-cfBHBBDE8xpDwvbTA",
-   authDomain: "ai-training-tasks.firebaseapp.com",
-   projectId: "ai-training-tasks",
-   storageBucket: "ai-training-tasks.firebasestorage.app",
-   messagingSenderId: "635815062881",
-   appId: "1:635815062881:web:3e0463099cda2b712fa920",
-   measurementId: "G-Q8QG41159X"
- };
+// Your REMOTE - TASKS DB - GERALDJOHN EMAIL
+const firebaseConfig = {
+  apiKey: "AIzaSyCqaeuoQVMLXPPR5qZOahkQAHM3bp9_eyE",
+  authDomain: "remote-tasks-35e05.firebaseapp.com",
+  projectId: "remote-tasks-35e05",
+  storageBucket: "remote-tasks-35e05.firebasestorage.app",
+  messagingSenderId: "474694612140",
+  appId: "1:474694612140:web:9b0b96afe242d242295b09",
+  measurementId: "G-57NM7HSXY0"
+};
 
 
 // Initialize Firebase
