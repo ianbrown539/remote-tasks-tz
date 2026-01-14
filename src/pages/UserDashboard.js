@@ -78,9 +78,9 @@ export const formatKES = (usd) => {
 };
 
 const VIP_CONFIG = {
-  Bronze: { priceUSD: 0.99, dailyTasks: 3 },
-  Silver: { priceUSD: 3.99, dailyTasks: 8 },
-  Gold:   { priceUSD: 8.99, dailyTasks: 15 },
+  Bronze: { priceUSD: 1.99, dailyTasks: 3 },
+  Silver: { priceUSD: 4.99, dailyTasks: 8 },
+  Gold:   { priceUSD: 9.99, dailyTasks: 15 },
 };
 
 const getNextThursday = () => {
@@ -342,77 +342,82 @@ const UserDashboard = () => {
   };
 
   const handleRealVIPUpgrade = async () => {
-    if (!selectedVIP) return toast.error('Select a VIP tier');
-    
-    const normalized = normalizePhoneNumber(mpesaNumber);
-    if (!normalized || !isValidMpesaNumber(mpesaNumber)) 
-      return toast.error('Invalid M-Pesa number');
+  if (!selectedVIP) return toast.error('Select a VIP tier');
 
-    setIsProcessing(true);
+  const normalized = normalizePhoneNumber(mpesaNumber);
+  if (!normalized || !isValidMpesaNumber(mpesaNumber))
+    return toast.error('Invalid M-Pesa number');
 
-    const liveRate = getCurrentExchangeRate();
-    const usdPrice = VIP_CONFIG[selectedVIP].priceUSD;
-    const kesAmount = Math.round(usdPrice * liveRate);
+  setIsProcessing(true);
 
-    const clientReference = `VIP_${currentUser.uid}_${Date.now()}`;
+  const liveRate = getCurrentExchangeRate();
+  const usdPrice = VIP_CONFIG[selectedVIP].priceUSD;
+  const kesAmount = Math.round(usdPrice * liveRate);
+  const clientReference = `VIP_${currentUser.uid}_${Date.now()}`;
 
-    try {
-      const res = await fetch('/api/stk-push', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phoneNumber: normalized,
-          amount: kesAmount,
-          reference: clientReference,
-          description: `${selectedVIP} VIP Upgrade • $${usdPrice} USD @ ${liveRate.toFixed(2)} KES/USD`,
-        }),
-      });
+  try {
+    const res = await fetch('/api/stk-push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phoneNumber: normalized,
+        amount: kesAmount,
+        reference: clientReference,
+      }),
+    });
 
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'STK push failed');
+    const data = await res.json();
 
-      toast.info(
-        <div className="text-xs">
-          <p>STK push sent to {mpesaNumber}</p>
-          <p className="text-lime-300 mt-1">
-            Amount: Ksh.{kesAmount.toLocaleString()} (≈ ${usdPrice} @ {liveRate.toFixed(2)} KES/USD)
-          </p>
-        </div>,
-        { autoClose: 15000 }
-      );
+    if (!data.success || !data.lipwaReference) {
+      throw new Error(data.error || 'STK push failed');
+    }
 
-      const poll = setInterval(async () => {
-        try {
-          const statusRes = await fetch(`/api/transaction-status?reference=${encodeURIComponent(data.payheroReference)}`);
-          const statusData = await statusRes.json();
+    toast.info(
+      <div className="text-xs">
+        <p>STK push sent to {mpesaNumber}</p>
+        <p className="text-emerald-300 mt-1">
+          Amount: Ksh.{kesAmount.toLocaleString()} (≈ ${usdPrice} @ {liveRate.toFixed(2)} KES/USD)
+        </p>
+      </div>,
+      { autoClose: 15000 }
+    );
 
-          if (statusData.status === 'SUCCESS') {
-            clearInterval(poll);
+    // Set pending state immediately
+    setIsProcessing(false); // Allow user to try again if needed
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const statusRes = await fetch(`/api/transaction-status?reference=${data.lipwaReference}`);
+        const statusData = await statusRes.json();
+
+        if (statusData.success && statusData.status) {
+          const newStatus = statusData.status.toUpperCase();
+
+          if (newStatus === 'SUCCESS') {
+            clearInterval(pollInterval);
             toast.success('Payment confirmed! VIP upgraded 🎉');
             await finalizeVIPUpgrade();
-          } else if (['FAILED', 'CANCELLED'].includes(statusData.status)) {
-            clearInterval(poll);
+          } else if (newStatus === 'FAILED') {
+            clearInterval(pollInterval);
             toast.error('Payment failed or cancelled');
-            setIsProcessing(false);
           }
-        } catch (e) {
-          console.error('Polling error:', e);
+          // PENDING → silently continue polling
         }
-      }, 5000);
+      } catch (err) {
+        console.error('Polling error:', err);
+      }
+    }, 2500);
 
-      setTimeout(() => {
-        clearInterval(poll);
-        if (isProcessing) {
-          toast.warn('Payment timed out — check your phone');
-          setIsProcessing(false);
-        }
-      }, 120000);
-
-    } catch (e) {
-      toast.error(e.message || 'Upgrade failed');
-      setIsProcessing(false);
-    }
-  };
+    // Auto-stop after 5 minutes
+    setTimeout(() => {
+      clearInterval(pollInterval);
+      toast.warn('Payment check timed out — if you completed it, refresh the page');
+    }, 300000);
+  } catch (e) {
+    toast.error(e.message || 'Upgrade failed');
+    setIsProcessing(false);
+  }
+};
 
   const finalizeVIPUpgrade = async () => {
     const newMax = VIP_CONFIG[selectedVIP].dailyTasks;
@@ -423,13 +428,11 @@ const UserDashboard = () => {
       lastTaskResetDate: serverTimestamp(),
       vipUpgradedAt: serverTimestamp(),
     });
-
     setUserProfile(prev => ({ ...prev, isVIP: true, tier: `${selectedVIP}VIP` }));
     toast.success(`${selectedVIP} VIP Activated! ${newMax} tasks/day unlocked!`);
     setShowConfetti(true);
     setTimeout(() => setShowConfetti(false), 7000);
     setShowVIPModal(false);
-    setIsProcessing(false);
     setSelectedVIP('');
     setMpesaNumber('');
   };
