@@ -50,9 +50,9 @@ import 'react-toastify/dist/ReactToastify.css';
 import { getCurrentExchangeRate, formatKES } from './UserDashboard';
 
 const VIP_CONFIG = {
-  Bronze: { priceUSD: 1.99, dailyTasks: 3 },
-  Silver: { priceUSD: 4.99, dailyTasks: 8 }, // Best value
-  Gold:   { priceUSD: 9.99, dailyTasks: 15 }, // Premium tier
+  Bronze: { priceUSD: 0.99, dailyTasks: 3 },
+  Silver: { priceUSD: 3.99, dailyTasks: 8 }, // Best value
+  Gold:   { priceUSD: 8.99, dailyTasks: 15 }, // Premium tier
 };
 
 const MIN_WITHDRAWAL_USD = 10.00;
