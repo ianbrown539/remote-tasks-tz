@@ -21,7 +21,7 @@ import availableTasks from '../data/availableTasks';
 import { useAuth } from '../context/AuthContext';
 
 // =============================
-// EXCHANGE RATE SIMULATOR (FIXED & CLEAN)
+// EXCHANGE RATE SIMULATOR
 // =============================
 
 class ExchangeRateSimulator {
