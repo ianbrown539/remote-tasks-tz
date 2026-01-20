@@ -6,7 +6,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import confetti from 'canvas-confetti';
 import {
   Clock, Upload, CheckCircle, ArrowLeft, Play, Pause,
-  ChevronRight, AlertCircle, Send, X
+  ChevronRight, AlertCircle, Send,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import availableTasks from '../data/availableTasks';

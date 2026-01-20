@@ -5,7 +5,6 @@ import { createUserWithEmailAndPassword } from 'firebase/auth';
 import {
   doc,
   setDoc,
-  getDoc,
   updateDoc,
   increment,
   arrayUnion,

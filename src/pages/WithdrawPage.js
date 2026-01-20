@@ -39,7 +39,6 @@ import {
   Sparkles,
   Zap,
   PartyPopper,
-  Rocket,
   BadgeCheck,
   RefreshCw,
   Users,
@@ -64,7 +63,6 @@ const REQUIRED_TOTAL_REFERRALS = 5;
 const REQUIRED_VIP_REFERRALS = 2;
 
 // Referral bonuses
-const STANDARD_REFERRAL_BONUS = 5;
 const VIP_UPGRADE_BONUS = 10; // Additional bonus when referred user upgrades to VIP
 
 const normalizePhoneNumber = (input) => {
