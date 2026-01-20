@@ -20,8 +20,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import availableTasks from '../data/availableTasks';
 import { useAuth } from '../context/AuthContext';
 
-// =============================
-// EXCHANGE RATE SIMULATOR
+
 // =============================
 
 class ExchangeRateSimulator {
