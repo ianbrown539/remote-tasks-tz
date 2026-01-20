@@ -21,8 +21,6 @@ import availableTasks from '../data/availableTasks';
 import { useAuth } from '../context/AuthContext';
 
 
-// =============================
-
 class ExchangeRateSimulator {
   constructor() {
     this.targetRate = 140.00;
