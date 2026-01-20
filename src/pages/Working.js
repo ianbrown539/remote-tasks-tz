@@ -237,7 +237,7 @@ const Working = () => {
         </header>
 
         <div className="max-w-6xl mx-auto px-4 py-6">
-          {/* Task Summary Bar */}
+          {/* Task Summary  */}
           <div className="bg-green-900/60 backdrop-blur rounded-xl border border-lime-400/20 p-5 mb-6">
             <div className="flex justify-between items-center">
               <div>
