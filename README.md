@@ -9,7 +9,7 @@ In the project directory, you can run:
 ### `npm start`
 
 Runs the app in the development mode.\
-Open [https://www.remote-tasks.it.com](https://www.remote-tasks.it.com) to view it in your browser.
+Open [https://remote-tasks-seven.vercel.app](https://remote-tasks-seven.vercel.app) to view it in your browser.
 
 The page will reload when you make changes.\
 You may also see any lint errors in the console.

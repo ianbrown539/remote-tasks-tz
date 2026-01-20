@@ -6,8 +6,8 @@ const axios = require('axios');
 
 module.exports = async (req, res) => {
   const allowedOrigins = [
-    'https://www.remote-tasks.it.com',
-    'https://www.remote-tasks.it.com', // Update with your actual deployed URL
+    'https://remote-tasks-seven.vercel.app',
+    'https://remote-tasks-seven.vercel.app', // Update with your actual deployed URL
   ];
 
   const origin = req.headers.origin;
