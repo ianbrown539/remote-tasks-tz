@@ -100,9 +100,6 @@ const normalizePhoneNumber = (input) => {
   return null;
 };
 
-const isValidMpesaNumber = (input) =>
-  /^0[17]\d{8}$/.test(input) || /^\+254[17]\d{8}$/.test(input) || /^254[17]\d{8}$/.test(input.replace(/\D/g, ''));
-
 const WithdrawPage = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
@@ -147,7 +144,7 @@ const WithdrawPage = () => {
   const [refreshingWithdrawals, setRefreshingWithdrawals] = useState(false);
 
   // Memoize VIP_CONFIG
-  const VIP_CONFIG = React.useMemo(() => getVIPConfig(), [tzsRate]);
+  const VIP_CONFIG = React.useMemo(() => getVIPConfig(), []);
 
   // Update TZS rate periodically
   useEffect(() => {
@@ -699,8 +696,8 @@ const WithdrawPage = () => {
                   <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
                     <BadgeCheck className="w-10 h-10 text-lime-400 animate-bounce" />
                   </div>
-                  <h3 className="text-2xl font-black text-white mb-3">Payment prompt sent!</h3>
-                  <p className="text-green-200 mb-6">Waiting for payment...</p>
+                  <h3 className="text-2xl font-black text-white mb-3">Payment Received!</h3>
+                  <p className="text-green-200 mb-6">Activating your VIP access...</p>
                   <div className="flex justify-center space-x-2">
                     <div className="w-3 h-3 bg-lime-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                     <div className="w-3 h-3 bg-lime-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -900,7 +897,13 @@ const WithdrawPage = () => {
             <div className="mb-5">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-xs font-semibold text-green-200 uppercase tracking-wide">Chagua Mpango Wako</p>
-               
+                <div className="flex items-center gap-1.5 bg-lime-400/20 px-2.5 py-1 rounded-full border border-lime-400/30">
+                  <span className="relative flex">
+                    <span className="animate-ping absolute inline-flex h-1.5 w-1.5 rounded-full bg-lime-400 opacity-75"></span>
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-lime-400"></span>
+                  </span>
+                  <span className="text-[10px] font-bold text-lime-400">1 USD = {tzsRate.toLocaleString()} TZS</span>
+                </div>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 {Object.entries(VIP_CONFIG).map(([tier, config]) => {
@@ -951,13 +954,6 @@ const WithdrawPage = () => {
               <div className="bg-green-900 border-2 border-lime-400 rounded-lg p-4 mb-5">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm text-green-200">Gharama</span>
-                   <div className="flex items-center gap-1.5 bg-lime-400/20 px-2.5 py-1 rounded-full border border-lime-400/30">
-                  <span className="relative flex">
-                    <span className="animate-ping absolute inline-flex h-1.5 w-1.5 rounded-full bg-lime-400 opacity-75"></span>
-                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-lime-400"></span>
-                  </span>
-                  <span className="text-[10px] font-bold text-lime-400">1 USD = {tzsRate.toLocaleString()} TZS</span>
-                </div>
                   <span className="text-xs bg-lime-400/20 text-lime-400 px-2 py-1 rounded font-semibold">
                     {selectedVIP} VIP
                   </span>

@@ -1,4 +1,4 @@
-// src/pages/Working.js
+// src/pages/Working.js - WITH ANIMATED SUBMISSION MODAL
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ToastContainer, toast } from 'react-toastify';
@@ -6,7 +6,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import confetti from 'canvas-confetti';
 import {
   Clock, Upload, CheckCircle, ArrowLeft, Play, Pause,
-  ChevronRight, AlertCircle, Send,
+  ChevronRight, AlertCircle, Send, Zap, BadgeCheck, PartyPopper, TrendingUp,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import availableTasks from '../data/availableTasks';
@@ -28,6 +28,11 @@ const Working = () => {
   const [loading, setLoading] = useState(true);
   const [myTaskInstance, setMyTaskInstance] = useState(null);
   const fileInputRef = useRef(null);
+
+  // Animated submission modal states
+  const [showSubmissionModal, setShowSubmissionModal] = useState(false);
+  const [submissionStep, setSubmissionStep] = useState(0);
+  const [submissionData, setSubmissionData] = useState(null);
 
   const questions = task?.questions || [];
 
@@ -141,6 +146,15 @@ const Working = () => {
     }
 
     setUploading(true);
+    
+    // Trigger confetti immediately
+    confetti({
+      particleCount: 150,
+      spread: 90,
+      origin: { y: 0.6 },
+      colors: ['#84cc16', '#22c55e', '#10b981']
+    });
+
     try {
       const savedTasks = JSON.parse(localStorage.getItem(`myTasks_${currentUser.uid}`) || '[]');
       const taskInstanceId = myTaskInstance?.id || `${taskId}_${Date.now()}`;
@@ -164,25 +178,33 @@ const Working = () => {
 
       localStorage.setItem(`myTasks_${currentUser.uid}`, JSON.stringify(savedTasks));
 
-      confetti({
-        particleCount: 150,
-        spread: 90,
-        origin: { y: 0.6 },
-        colors: ['#84cc16', '#22c55e', '#10b981']
+      // Store submission data for modal
+      setSubmissionData({
+        taskTitle: task.title,
+        amount: task.paymentAmount,
+        questionsCompleted: questions.length,
+        timeSpent: formatTime(seconds),
+        isOnboarding: isOnboardingTask,
       });
 
-      toast.success('Task submitted successfully!');
+      // Show animated modal
+      setShowSubmissionModal(true);
+      setSubmissionStep(0);
 
-      if (isOnboardingTask) {
-        toast.info('Welcome aboard! Onboarding approved instantly.');
-      } else {
-        toast.info('Approval in 1–5 minutes — check your balance soon.');
-      }
+      // Progress through animation steps
+      setTimeout(() => setSubmissionStep(1), 1500);
+      setTimeout(() => setSubmissionStep(2), 3000);
+      
+      // Navigate to dashboard after animation
+      setTimeout(() => {
+        setShowSubmissionModal(false);
+        navigate('/dashboard');
+      }, 6000);
 
-      setTimeout(() => navigate('/dashboard'), 2500);
     } catch (err) {
       console.error(err);
       toast.error('Submission failed');
+      setShowSubmissionModal(false);
     } finally {
       setUploading(false);
     }
@@ -215,6 +237,104 @@ const Working = () => {
     <>
       <div className="min-h-screen bg-green-950 text-white">
         <ToastContainer position="top-center" theme="dark" autoClose={3000} />
+
+        {/* ANIMATED SUBMISSION MODAL */}
+        {showSubmissionModal && submissionData && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-lg z-50 flex items-center justify-center p-4">
+            <div className="bg-green-950 rounded-2xl p-8 max-w-md w-full shadow-2xl border border-white/10">
+              <div className="text-center">
+                {submissionStep === 0 && (
+                  <div>
+                    <div className="w-20 h-20 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                      <Zap className="w-10 h-10 text-blue-400 animate-pulse" />
+                    </div>
+                    <h3 className="text-2xl font-black text-white mb-3">Processing Submission</h3>
+                    <p className="text-green-200 mb-2">Verifying your answers...</p>
+                    <p className="text-xs text-green-400 mb-6">Please wait while we review your work</p>
+                    <div className="w-8 h-8 border-4 border-lime-400 border-t-transparent rounded-full animate-spin mx-auto" />
+                  </div>
+                )}
+
+                {submissionStep === 1 && (
+                  <div>
+                    <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                      <BadgeCheck className="w-10 h-10 text-lime-400 animate-bounce" />
+                    </div>
+                    <h3 className="text-2xl font-black text-white mb-3">Submission Received!</h3>
+                    <p className="text-green-200 mb-6">Your task is under review...</p>
+                    <div className="flex justify-center space-x-2">
+                      <div className="w-3 h-3 bg-lime-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <div className="w-3 h-3 bg-lime-400 rounded-full animate-bounce" style={{ animationDelay: '10000ms' }} />
+                      <div className="w-3 h-3 bg-lime-400 rounded-full animate-bounce" style={{ animationDelay: '20000ms' }} />
+                    </div>
+                  </div>
+                )}
+
+                {submissionStep === 2 && (
+                  <div>
+                    <div className="w-20 h-20 bg-lime-400 rounded-full flex items-center justify-center mx-auto mb-6">
+                      <PartyPopper className="w-10 h-10 text-green-950" />
+                    </div>
+                    <h3 className="text-2xl font-black text-white mb-3">
+                      {submissionData.isOnboarding ? 'Welcome Aboard! 🎉' : 'Task Submitted! 🎉'}
+                    </h3>
+                    <p className="text-green-200 mb-2">
+                      {submissionData.isOnboarding 
+                        ? 'Your onboarding is complete and approved instantly!'
+                        : 'Submission successful'}
+                    </p>
+                    
+                    <div className="bg-green-900 rounded-xl p-5 border border-lime-400 mt-6">
+                      <div className="flex justify-between items-center mb-3">
+                        <span className="text-green-200">Task:</span>
+                        <span className="text-lg font-bold text-white">
+                          {submissionData.taskTitle.length > 30 
+                            ? submissionData.taskTitle.substring(0, 30) + '...' 
+                            : submissionData.taskTitle}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="text-green-300">Payment:</span>
+                        <span className="font-bold text-lime-400">${submissionData.amount.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="text-green-300">Questions:</span>
+                        <span className="font-bold text-white">{submissionData.questionsCompleted} completed</span>
+                      </div>
+                      <div className="flex justify-between text-sm mb-3">
+                        <span className="text-green-300">Time spent:</span>
+                        <span className="font-bold text-white">{submissionData.timeSpent}</span>
+                      </div>
+                      <div className="border-t border-white/10 pt-3">
+                        <div className="flex items-center justify-center gap-2 text-sm">
+                          {submissionData.isOnboarding ? (
+                            <>
+                              <CheckCircle className="w-4 h-4 text-lime-400" />
+                              <span className="text-lime-400 font-semibold">Approved Instantly</span>
+                            </>
+                          ) : (
+                            <>
+                              <TrendingUp className="w-4 h-4 text-yellow-400" />
+                              <span className="text-yellow-400 font-semibold">Under Review • Approval in 1-5 min</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-6">
+                      <p className="text-xs text-green-300">
+                        {submissionData.isOnboarding 
+                          ? 'All tasks are now unlocked! Start earning more.' 
+                          : 'Check your balance soon for payment approval.'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Compact Header */}
         <header className="bg-green-900/50 backdrop-blur border-b border-white/10 sticky top-0 z-40">

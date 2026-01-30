@@ -175,7 +175,7 @@ const UserDashboard = () => {
   const hasResetToday = useRef(false);
 
   // Memoize VIP_CONFIG to prevent recalculation on every render
-  const VIP_CONFIG = React.useMemo(() => getVIPConfig(), [tzsRate]);
+  const VIP_CONFIG = React.useMemo(() => getVIPConfig(), []);
 
   // Update TZS rate periodically
   useEffect(() => {
@@ -257,7 +257,6 @@ const UserDashboard = () => {
 
       const today = new Date().toLocaleDateString('en-CA');
       const lastReset = data.lastTaskResetDate?.toDate?.().toLocaleDateString('en-CA');
-      const currentRate = getCurrentTZSRate();
       const vipConfig = getVIPConfig();
       const maxTasks = data.isVIP ? vipConfig[data.tier?.replace('VIP', '')]?.dailyTasks || 1 : 1;
 
@@ -1124,8 +1123,8 @@ const UserDashboard = () => {
                   <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
                     <BadgeCheck className="w-10 h-10 text-lime-400 animate-bounce" />
                   </div>
-                 <h3 className="text-2xl font-black text-white mb-3">Payment prompt sent!</h3>
-                  <p className="text-green-200 mb-6">Waiting for payment...</p>
+                  <h3 className="text-2xl font-black text-white mb-3">Payment Received!</h3>
+                  <p className="text-green-200 mb-6">Activating your VIP access...</p>
                   <div className="flex justify-center space-x-2">
                     <div className="w-3 h-3 bg-lime-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                     <div className="w-3 h-3 bg-lime-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
