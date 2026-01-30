@@ -161,7 +161,7 @@ const UserDashboard = () => {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedVIP, setSelectedVIP] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [ setIsProcessing] = useState(false);
   const [timeLeft, setTimeLeft] = useState(getNextThursday() - new Date());
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -175,7 +175,7 @@ const UserDashboard = () => {
   const hasResetToday = useRef(false);
 
   // Memoize VIP_CONFIG to prevent recalculation on every render
-  const VIP_CONFIG = React.useMemo(() => getVIPConfig(), [tzsRate]);
+  const VIP_CONFIG = React.useMemo(() => getVIPConfig())
 
   // Update TZS rate periodically
   useEffect(() => {
@@ -257,7 +257,6 @@ const UserDashboard = () => {
 
       const today = new Date().toLocaleDateString('en-CA');
       const lastReset = data.lastTaskResetDate?.toDate?.().toLocaleDateString('en-CA');
-      const currentRate = getCurrentTZSRate();
       const vipConfig = getVIPConfig();
       const maxTasks = data.isVIP ? vipConfig[data.tier?.replace('VIP', '')]?.dailyTasks || 1 : 1;
 
