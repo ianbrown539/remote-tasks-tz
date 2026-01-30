@@ -612,16 +612,21 @@ const UserDashboard = () => {
               <div className="flex-shrink-0">
                 <Star className="w-8 h-8 text-white" />
               </div>
-              <div className="flex-1">
-                <h3 className="text-xl font-black mb-2">Karibu! Welcome to Remote AI Tasks! 🎉</h3>
-                <p className="text-green-900 mb-3">
-                  Complete your first onboarding task below to unlock all available tasks and start earning!
-                </p>
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  <CheckCircle className="w-4 h-4" />
-                  <span>Quick & Easy • Get Paid Instantly • Unlock Full Access</span>
-                </div>
-              </div>
+              
+<div className="flex-1">
+  <h3 className="text-xl font-black mb-2">Karibu! 🇹🇿 Jambo Rafiki!</h3>
+  <p className="text-green-900 mb-3">
+    Kamilisha kazi yako ya kwanza hapa chini ili kufungua kazi zote na kuanza kupata pesa mara moja!
+  </p>
+  <p className="text-green-700 text-sm mb-3 italic">
+    Complete your first task below to unlock all jobs and start earning instantly!
+  </p>
+  <div className="flex items-center gap-2 text-sm font-semibold">
+    <CheckCircle className="w-4 h-4" />
+    <span>Rahisi Sana • Pata Pesa Haraka • Fungua Kazi Zote</span>
+  </div>
+</div>
+
             </div>
           </div>
         )}
