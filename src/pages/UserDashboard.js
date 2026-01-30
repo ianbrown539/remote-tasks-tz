@@ -1061,7 +1061,7 @@ const UserDashboard = () => {
                     type="tel"
                     value={phoneNumber}
                     onChange={(e) => setPhoneNumber(e.target.value)}
-                    placeholder="0769500302 au 0652345678"
+                    placeholder="07XXXXXXXX au 06XXXXXXXX"
                     className="w-full pl-10 pr-4 py-3 rounded-lg bg-green-900 border-2 border-white/10 text-white placeholder-green-400 focus:border-lime-400 focus:outline-none transition"
                   />
                 </div>

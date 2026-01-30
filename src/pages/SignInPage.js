@@ -169,7 +169,7 @@ function SignInPage() {
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-lime-500 focus:border-transparent text-sm transition"
-                  placeholder="0769500302"
+                  placeholder="07XXXXXXXX"
                   required
                 />
                 {phone && isValidTZPhone(phone) && (

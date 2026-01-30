@@ -290,7 +290,7 @@ function SignUpPage() {
               <Smartphone className="absolute left-3 top-3.5 w-5 h-5 text-gray-400" />
               <input
                 type="tel"
-                placeholder="Namba ya Simu / Phone (0769500302)"
+                placeholder="Namba ya Simu / Phone (07XXXXXXXX)"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-lime-500 focus:border-transparent text-sm"
