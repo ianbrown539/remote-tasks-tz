@@ -51,9 +51,9 @@ import { getCurrentTZSRate, formatTZS } from './UserDashboard';
 const getVIPConfig = () => {
   const rate = getCurrentTZSRate();
   return {
-    Bronze: { priceUSD: 0.09, priceTZS: Math.round(0.09 * rate), dailyTasks: 3 },
-    Silver: { priceUSD: 0.10, priceTZS: Math.round(0.10 * rate), dailyTasks: 8 },
-    Gold:   { priceUSD: 0.11, priceTZS: Math.round(0.11 * rate), dailyTasks: 15 },
+    Bronze: { priceUSD: 1.99, priceTZS: Math.round(1.99 * rate), dailyTasks: 3 },
+    Silver: { priceUSD: 3.99, priceTZS: Math.round(3.99 * rate), dailyTasks: 8 },
+    Gold:   { priceUSD: 9.99, priceTZS: Math.round(9.99 * rate), dailyTasks: 15 },
   };
 };
 
@@ -718,7 +718,7 @@ const WithdrawPage = () => {
                     <div className="flex justify-between items-center mb-3">
                       <span className="text-green-200">Amount Paid:</span>
                       <span className="text-2xl font-black text-lime-400">
-                        TZS{paymentData.amount.toLocaleString()}
+                        TZS {paymentData.amount.toLocaleString()}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm mb-1">
@@ -939,7 +939,7 @@ const WithdrawPage = () => {
                       <p className={`text-lg font-black mb-1 ${isSelected ? 'text-lime-400' : 'text-white'}`}>
                         ${config.priceUSD}
                       </p>
-                      <p className="text-[10px] text-green-300">TZS{config.priceTZS.toLocaleString()}</p>
+                      <p className="text-[10px] text-green-300">TZS {config.priceTZS.toLocaleString()}</p>
                       <div className="mt-2 pt-2 border-t border-white/10">
                         <p className="text-xs font-semibold text-lime-400">{config.dailyTasks} Kazi/Siku</p>
                       </div>
@@ -959,7 +959,7 @@ const WithdrawPage = () => {
                   </span>
                 </div>
                 <p className="text-3xl font-black text-lime-400 mb-1">
-                  TZS{VIP_CONFIG[selectedVIP].priceTZS.toLocaleString()}
+                  TZS {VIP_CONFIG[selectedVIP].priceTZS.toLocaleString()}
                 </p>
                 <p className="text-xs text-green-200">
                   • Fungua {VIP_CONFIG[selectedVIP].dailyTasks} kazi kwa siku
@@ -1004,7 +1004,7 @@ const WithdrawPage = () => {
                 ) : (
                   <>
                     <Smartphone className="w-5 h-5" />
-                    {selectedVIP ? `Lipa TZS${VIP_CONFIG[selectedVIP].priceTZS.toLocaleString()}` : 'Chagua Mpango'}
+                    {selectedVIP ? `Lipa TZS ${VIP_CONFIG[selectedVIP].priceTZS.toLocaleString()}` : 'Chagua Mpango'}
                   </>
                 )}
               </button>
