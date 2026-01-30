@@ -9,10 +9,10 @@ PAYHERO_API_PASSWORD=lYgwkjcVrt6vA3e5mCbe3rXulU2qVOX6zi2maTt7
 # ===========================================
 
 # PalmPesa API Token (from your working PHP integration)
-PALMPESA_API_TOKEN=j1wLS8FLkCg535OcEpI34oy5ZlDFAvllLlC8PkzwatQ7ZW2TFvG4EV59bf5w
+PALMPESA_API_TOKEN=4IYF33btOXqnLd3Ap0or48rUn9af58f7Y5n64lajbuEmwz3FdCeR7TFfuxpx
 
 # PalmPesa User ID / Merchant ID (from PalmPesa dashboard)
-PALMPESA_USER_ID=113
+PALMPESA_USER_ID=257
 
 # ===========================================
 # FIREBASE ADMIN (for payment records)
@@ -27,6 +27,6 @@ FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYOUR_PRIVATE_KEY_HERE\n-----E
 # ===========================================
 # APPLICATION CONFIGURATION
 # ===========================================
-REACT_APP_BASE_URL=https://www.remote-tasks.it.com
+REACT_APP_BASE_URL=https://remote-tasks-tz.vercel.app
 GENERATE_SOURCEMAP=false
 NODE_ENV=production

@@ -86,9 +86,8 @@ function validateTZPhoneNumber(phone) {
 module.exports = async (req, res) => {
   // CORS - Allow both production and local development
   const allowedOrigins = [
-    'https://www.remote-tasks.it.com',
-    'http://localhost:3000',
-    'http://localhost:54325'
+    'https://remote-tasks-tz.vercel.app',
+    'https://remote-tasks-tz.vercel.app/'
   ];
   
   const origin = req.headers.origin;

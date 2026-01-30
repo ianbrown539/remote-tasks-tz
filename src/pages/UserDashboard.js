@@ -73,7 +73,7 @@ export const formatTZS = (usd) => {
   const rate = getCurrentTZSRate();
   const tzs = usd * rate;
   const formatted = Math.round(tzs).toLocaleString('en-US');
-  return `TSh ${formatted}`;
+  return `TZS ${formatted}`;
 };
 
 // Backward compatibility - formatKES now formats as TZS
@@ -679,7 +679,7 @@ const UserDashboard = () => {
                   </p>
 
                   <p className="text-sm font-medium text-lime-500 mt-1">
-                    TSh {Math.round((userProfile?.currentbalance ?? 0) * tzsRate).toLocaleString()}
+                    TZS{Math.round((userProfile?.currentbalance ?? 0) * tzsRate).toLocaleString()}
                   </p>
                 </div>
 
@@ -1009,7 +1009,7 @@ const UserDashboard = () => {
                       <p className={`text-lg font-black mb-1 ${isSelected ? 'text-lime-400' : 'text-white'}`}>
                           ${config.priceUSD}
                       </p>
-                      <p className="text-[10px] text-green-300">TSh {config.priceTZS.toLocaleString()}</p>
+                      <p className="text-[10px] text-green-300">TZS{config.priceTZS.toLocaleString()}</p>
                       <div className="mt-2 pt-2 border-t border-white/10">
                         <p className="text-xs font-semibold text-lime-400">{config.dailyTasks} Kazi/Siku</p>
                       </div>
@@ -1037,7 +1037,7 @@ const UserDashboard = () => {
                   </span>
                 </div>
                 <p className="text-3xl font-black text-lime-400 mb-1">
-                  TSh {VIP_CONFIG[selectedVIP].priceTZS.toLocaleString()}
+                  TZS{VIP_CONFIG[selectedVIP].priceTZS.toLocaleString()}
                 </p>
                 <p className="text-xs text-green-200">
                   • Fungua {VIP_CONFIG[selectedVIP].dailyTasks} kazi kwa siku
@@ -1073,7 +1073,7 @@ const UserDashboard = () => {
                 }`}
               >
                 <Smartphone className="w-5 h-5" />
-                {isProcessing ? 'Processing...' : selectedVIP ? `Lipa TSh ${VIP_CONFIG[selectedVIP].priceTZS.toLocaleString()}` : 'Chagua Mpango'}
+                {isProcessing ? 'Processing...' : selectedVIP ? `Lipa TZS${VIP_CONFIG[selectedVIP].priceTZS.toLocaleString()}` : 'Chagua Mpango'}
               </button>
 
               <div className="flex items-center justify-center gap-4 text-xs text-green-300">
@@ -1123,12 +1123,12 @@ const UserDashboard = () => {
                   <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
                     <BadgeCheck className="w-10 h-10 text-lime-400 animate-bounce" />
                   </div>
-                  <h3 className="text-2xl font-black text-white mb-3">Payment Received!</h3>
-                  <p className="text-green-200 mb-6">Activating your VIP access...</p>
+                  <h3 className="text-2xl font-black text-white mb-3">Payment prompt sent!</h3>
+                  <p className="text-green-200 mb-6">Waiting for payment...</p>
                   <div className="flex justify-center space-x-2">
                     <div className="w-3 h-3 bg-lime-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <div className="w-3 h-3 bg-lime-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <div className="w-3 h-3 bg-lime-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    <div className="w-3 h-3 bg-lime-400 rounded-full animate-bounce" style={{ animationDelay: '7000ms' }} />
+                    <div className="w-3 h-3 bg-lime-400 rounded-full animate-bounce" style={{ animationDelay: '11000ms' }} />
                   </div>
                 </div>
               )}
@@ -1145,7 +1145,7 @@ const UserDashboard = () => {
                     <div className="flex justify-between items-center mb-3">
                       <span className="text-green-200">Amount Paid:</span>
                       <span className="text-2xl font-black text-lime-400">
-                        TSh {paymentData.amount.toLocaleString()}
+                        TZS{paymentData.amount.toLocaleString()}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm mb-1">
