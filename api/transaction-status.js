@@ -1,66 +1,60 @@
-if (process.env.NODE_ENV !== 'production') {
-  require('dotenv').config();
-}
-
 const axios = require('axios');
 
 module.exports = async (req, res) => {
-  const { reference } = req.query; // CheckoutRequestID e.g. ws_CO_...
-
-  console.log(`[${new Date().toISOString()}] Status check for CheckoutRequestID: ${reference}`);
+  // Extract and validate reference
+  const { reference } = req.query;
+  console.log(`[${new Date().toISOString()}] Transaction status requested - Reference: ${reference}`);
 
   if (!reference) {
+    console.log('Missing reference parameter');
     return res.status(400).json({ success: false, error: 'Missing reference' });
   }
 
-  const apiKey = process.env.LIPWA_API_KEY;
-
-  if (!apiKey) {
-    console.error('Missing LIPWA_API_KEY');
-    return res.status(500).json({ success: false, error: 'Server configuration error' });
-  }
-
   try {
+    // Get PayHero credentials
+    const apiUsername = process.env.PAYHERO_API_USERNAME;
+    const apiPassword = process.env.PAYHERO_API_PASSWORD;
+    if (!apiUsername || !apiPassword) {
+      throw new Error('Missing PayHero API credentials');
+    }
+    const authToken = `Basic ${Buffer.from(`${apiUsername}:${apiPassword}`).toString('base64')}`;
+
+    // Query PayHero API
     const response = await axios.get(
-      `https://pay.lipwa.app/api/status?ref=${encodeURIComponent(reference)}`,
+      `https://backend.payhero.co.ke/api/v2/transaction-status?reference=${reference}`,
       {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        timeout: 15000, // Slightly increased for reliability
+        headers: { Authorization: authToken, 'Content-Type': 'application/json' },
+        timeout: 10000,
       }
     );
 
-    const data = response.data;
-
-    console.log('Lipwa status response:', JSON.stringify(data, null, 2));
-
-    // Normalize Lipwa's raw status strings
-    let normalizedStatus = 'PENDING';
-
-    if (data.status === 'payment.success') {
+    // Normalize status
+    const statusData = response.data;
+    let normalizedStatus;
+    if (statusData.status === 'SUCCESS') {
       normalizedStatus = 'SUCCESS';
-    } else if (data.status === 'payment.failed') {
-      normalizedStatus = 'FAILED'; // Covers both failed and cancelled
-    } else if (data.status === 'payment.queued') {
-      normalizedStatus = 'PENDING';
+    } else if (statusData.status === 'FAILED' && statusData.error_message?.toLowerCase().includes('cancel')) {
+      normalizedStatus = 'CANCELLED';
+    } else if (statusData.status === 'FAILED') {
+      normalizedStatus = 'FAILED';
+    } else if (statusData.status === 'CANCELLED') {
+      normalizedStatus = 'CANCELLED';
+    } else {
+      normalizedStatus = 'QUEUED';
     }
-    // Any unknown status falls back to PENDING (safe)
 
+    // Respond with status
+    console.log(`Status for ${reference}: ${normalizedStatus}`);
     return res.json({
       success: true,
       status: normalizedStatus,
-      data: data, // Return raw data for frontend debugging if needed
+      data: statusData,
     });
   } catch (error) {
-    const errorMsg = error.response?.data?.message || error.message || 'Unknown error';
-    console.error('Status check error:', error.response?.data || errorMsg);
-
+    console.error('Transaction status error:', error.message, error.response?.data);
     return res.status(500).json({
       success: false,
-      error: 'Failed to fetch transaction status',
-      details: errorMsg,
+      error: error.message || 'An unexpected error occurred',
     });
   }
 };

@@ -2,48 +2,49 @@
 
 const availableTasks = [
 {
-  id: 'task0',
-  title: 'Welcome! Getting to Know You better with User Onboarding task',
-  category: 'User Onboarding',
-  paymentAmount: 10,
-  duration: '20 mins',
-  difficulty: 'Beginner',
-  questions: [
-    {
-      id: 'q1',
-      type: 'text',
-      question: 'What is your first name and a fun fact about yourself?',
-      required: true
-    },
-    {
-      id: 'q2',
-      type: 'opinion',
-      question: 'Which activity do you enjoy most in your free time? sampleA: “Reading books.”, sampleB: “Playing games.”, sampleC: “Exploring outdoors.”',
-      options: ['A', 'B', 'C'],
-      required: true
-    },
-    {
-      id: 'q3',
-      type: 'text',
-      question: 'What motivates you to participate in online tasks and surveys?',
-      required: true
-    },
-    {
-      id: 'q4',
-      type: 'opinion',
-      question: 'Which type of tasks do you prefer? sampleA: “Creative writing.”, sampleB: “Data labeling.”, sampleC: “Evaluating AI responses.”',
-      options: ['A', 'B', 'C'],
-      required: true
-    },
-    {
-      id: 'q5',
-      type: 'file',
-      question: 'Upload a simple self-introduction document or image (PDF/DOCX/PNG) that tells us a bit about yourself.',
-      acceptedFormats: '.pdf,.docx,.png',
-      required: true
-    }
-  ]
-},
+    "id": "task0",
+    "title": "Welcome! Let's Get to Know You",
+    "category": "User Onboarding",
+    "paymentAmount": 10,
+    "duration": "5 mins",
+    "difficulty": "Beginner",
+    "questions": [
+      {
+        "id": "q1",
+        "type": "text",
+        "question": "What is your first name and the county you currently live in?",
+        "required": true
+      },
+      {
+        "id": "q2",
+        "type": "opinion",
+        "question": "Which age group do you belong to?",
+        "options": ["18-24", "25-34", "35-44", "45-54", "55+"],
+        "required": true
+      },
+      {
+        "id": "q3",
+        "type": "opinion",
+        "question": "What is your highest level of education?",
+        "options": ["Primary", "Secondary", "Diploma", "Bachelor's Degree", "Postgraduate"],
+        "required": true
+      },
+      {
+        "id": "q4",
+        "type": "opinion",
+        "question": "What is your current employment status?",
+        "options": ["Student", "Employed Full-Time", "Employed Part-Time", "Self-Employed", "Seeking Work", "Not Seeking Work"],
+        "required": true
+      },
+      {
+        "id": "q5",
+        "type": "opinion",
+        "question": "What is your approximate gross monthly income range in KSh?",
+        "options": ["Below 20,000", "20,000 - 50,000", "50,001 - 100,000", "100,001 - 200,000", "Above 200,000"],
+        "required": true
+      }
+    ]
+  },
 
 {
   id: 'task1',
