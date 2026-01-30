@@ -15,6 +15,7 @@
     "canvas-confetti": "^1.9.4",
     "dotenv": "^17.2.3",
     "firebase": "^12.5.0",
+    "firebase-admin": "^13.6.0",
     "googleapis": "^155.0.0",
     "lucide-react": "^0.535.0",
     "react": "^19.1.1",

@@ -1,0 +1,32 @@
+# ===========================================
+# PAYHERO (Kenya M-Pesa) - EXISTING & WORKING
+# ===========================================
+PAYHERO_API_USERNAME=csGsOUL0SqE07rXtD6RU
+PAYHERO_API_PASSWORD=lYgwkjcVrt6vA3e5mCbe3rXulU2qVOX6zi2maTt7
+
+# ===========================================
+# PALMPESA (Tanzania) - ACTUAL CREDENTIALS
+# ===========================================
+
+# PalmPesa API Token (from your working PHP integration)
+PALMPESA_API_TOKEN=j1wLS8FLkCg535OcEpI34oy5ZlDFAvllLlC8PkzwatQ7ZW2TFvG4EV59bf5w
+
+# PalmPesa User ID / Merchant ID (from PalmPesa dashboard)
+PALMPESA_USER_ID=113
+
+# ===========================================
+# FIREBASE ADMIN (for payment records)
+# ===========================================
+# Get these from Firebase Console → Project Settings → Service Accounts
+# Click "Generate new private key"
+
+FIREBASE_PROJECT_ID=remote-tasks-35e05
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@remote-tasks-35e05.iam.gserviceaccount.com
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYOUR_PRIVATE_KEY_HERE\n-----END PRIVATE KEY-----\n"
+
+# ===========================================
+# APPLICATION CONFIGURATION
+# ===========================================
+REACT_APP_BASE_URL=https://www.remote-tasks.it.com
+GENERATE_SOURCEMAP=false
+NODE_ENV=production

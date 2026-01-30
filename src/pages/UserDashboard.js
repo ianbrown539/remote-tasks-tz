@@ -1,4 +1,4 @@
-// src/pages/UserDashboard.js
+// src/pages/UserDashboard.js - WITH DYNAMIC EXCHANGE RATE & ANIMATED MODALS
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -12,7 +12,8 @@ import { db, auth } from '../services/firebase';
 import {
   DollarSign, Calendar, Activity, Briefcase, CheckCircle,
   ChevronRight, LogOut, Menu, X, Crown, Smartphone, PlayCircle,
-  RefreshCw, CheckCircle2, Check, Bell, User, Star, Zap
+  RefreshCw, CheckCircle2, Check, Bell, User, Star, Zap, 
+  BadgeCheck, PartyPopper
 } from 'lucide-react';
 
 import { ToastContainer, toast } from 'react-toastify';
@@ -21,13 +22,13 @@ import 'react-toastify/dist/ReactToastify.css';
 import availableTasks from '../data/availableTasks';
 import { useAuth } from '../context/AuthContext';
 
-
-class ExchangeRateSimulator {
+// Dynamic TZS Exchange Rate Simulator (2000-3000 range)
+class TZSExchangeRateSimulator {
   constructor() {
-    this.targetRate = 140.00;
-    this.currentRate = 120.00;
+    this.targetRate = 2709;
+    this.currentRate = 2217;
     this.lastUpdate = Date.now();
-    this.dailyBias = (Math.random() - 0.5) * 0.3;
+    this.dailyBias = (Math.random() - 0.5) * 50;
     this.updateCounter = 0;
   }
 
@@ -35,52 +36,82 @@ class ExchangeRateSimulator {
     const now = Date.now();
     const secondsSinceLast = (now - this.lastUpdate) / 1000;
 
-    if (secondsSinceLast > 15 + Math.random() * 30) {
+    if (secondsSinceLast > 30 + Math.random() * 60) {
       this._updateRate();
       this.lastUpdate = now;
     }
 
-    return Math.round(this.currentRate * 10000) / 10000;
+    return Math.round(this.currentRate);
   }
 
   _updateRate() {
     this.updateCounter++;
-
-    const noise = (Math.random() - 0.5) * 0.06;
+    const noise = (Math.random() - 0.5) * 20;
     const distanceFromTarget = this.targetRate - this.currentRate;
-    const reversion = distanceFromTarget * 0.04;
+    const reversion = distanceFromTarget * 0.05;
     const dayFraction = Date.now() / (86400 * 1000);
     const trend = this.dailyBias * (dayFraction - Math.floor(dayFraction));
 
-    this.currentRate += noise + reversion + trend * 0.0001;
-    this.currentRate = Math.max(120.00, Math.min(130.00, this.currentRate));
+    this.currentRate += noise + reversion + trend * 0.01;
+    this.currentRate = Math.max(2000, Math.min(3000, this.currentRate));
 
-    if (this.updateCounter % 150 === 0) {
-      this.targetRate += (Math.random() - 0.5) * 1.5;
-      this.targetRate = Math.max(121, Math.min(129, this.targetRate));
+    if (this.updateCounter % 100 === 0) {
+      this.targetRate += (Math.random() - 0.5) * 100;
+      this.targetRate = Math.max(2000, Math.min(3000, this.targetRate));
     }
   }
 }
 
-// Single shared instance
-const exchangeRateSimulator = new ExchangeRateSimulator();
+const tzsExchangeSimulator = new TZSExchangeRateSimulator();
 
-// Public functions — NOW SAFE
-export const getCurrentExchangeRate = () => exchangeRateSimulator.getCurrentRate();
+export const getCurrentTZSRate = () => tzsExchangeSimulator.getCurrentRate();
 
-export const formatKES = (usd) => {
-  const rate = getCurrentExchangeRate();
-  const kes = usd * rate;
-  const formatted = kes.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  return `Ksh.${formatted}`;
+// Backward compatibility - use TZS rate for Kenya exchange too
+export const getCurrentExchangeRate = () => getCurrentTZSRate();
+
+export const formatTZS = (usd) => {
+  const rate = getCurrentTZSRate();
+  const tzs = usd * rate;
+  const formatted = Math.round(tzs).toLocaleString('en-US');
+  return `TSh ${formatted}`;
 };
 
-const VIP_CONFIG = {
-  Bronze: { priceUSD: 1.99, dailyTasks: 3 },
-  Silver: { priceUSD: 4.99, dailyTasks: 8 },
-  Gold:   { priceUSD: 9.99, dailyTasks: 15 },
+// Backward compatibility - formatKES now formats as TZS
+export const formatKES = (usd) => formatTZS(usd);
+
+// VIP Configuration - TANZANIA PRICING WITH DYNAMIC RATES
+const getVIPConfig = () => {
+  const rate = getCurrentTZSRate();
+  return {
+    Bronze: { priceUSD: 0.09, priceTZS: Math.round(0.09 * rate), dailyTasks: 3 },
+    Silver: { priceUSD: 0.10, priceTZS: Math.round(0.10 * rate), dailyTasks: 8 },
+    Gold:   { priceUSD: 0.11, priceTZS: Math.round(0.11 * rate), dailyTasks: 15 },
+  };
 };
 
+// Tanzania phone validation
+const isValidTZPhoneNumber = (input) => {
+  if (!input) return false;
+  const cleaned = input.replace(/\D/g, '');
+  return /^0(6[2-9]|7[1-9])\d{7}$/.test(cleaned) || /^255(6[2-9]|7[1-9])\d{7}$/.test(cleaned);
+};
+
+const normalizeTZPhoneNumber = (input) => {
+  if (!input) return null;
+  const cleaned = input.replace(/\D/g, '');
+  
+  if (/^0(6[2-9]|7[1-9])\d{7}$/.test(cleaned)) {
+    return `255${cleaned.slice(1)}`;
+  }
+  
+  if (/^255(6[2-9]|7[1-9])\d{7}$/.test(cleaned)) {
+    return cleaned;
+  }
+  
+  return null;
+};
+
+// Helper functions
 const getNextThursday = () => {
   const now = new Date();
   const thursday = new Date(now);
@@ -118,18 +149,6 @@ const statusConfig = {
   approved: { label: 'Approved', icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-50' },
 };
 
-const normalizePhoneNumber = (input) => {
-  if (!input) return null;
-  const cleaned = input.replace(/\D/g, '');
-  if (/^0[71]\d{8}$/.test(input)) return `254${cleaned.slice(1)}`;
-  if (/^\+254[71]\d{8}$/.test(input)) return cleaned;
-  if (/^254[71]\d{8}$/.test(cleaned)) return cleaned;
-  return null;
-};
-
-const isValidMpesaNumber = (input) =>
-  /^0[17]\d{8}$/.test(input) || /^\+254[17]\d{8}$/.test(input);
-
 const UserDashboard = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
@@ -141,13 +160,30 @@ const UserDashboard = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedVIP, setSelectedVIP] = useState('');
-  const [mpesaNumber, setMpesaNumber] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [timeLeft, setTimeLeft] = useState(getNextThursday() - new Date());
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [tzsRate, setTzsRate] = useState(getCurrentTZSRate());
+  
+  // Payment animation states
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [animationStep, setAnimationStep] = useState(0);
+  const [paymentData, setPaymentData] = useState(null);
 
   const hasResetToday = useRef(false);
+
+  // Memoize VIP_CONFIG to prevent recalculation on every render
+  const VIP_CONFIG = React.useMemo(() => getVIPConfig(), [tzsRate]);
+
+  // Update TZS rate periodically
+  useEffect(() => {
+    const rateTimer = setInterval(() => {
+      setTzsRate(getCurrentTZSRate());
+    }, 5000); // Update every 30 seconds
+    return () => clearInterval(rateTimer);
+  }, []);
 
   // DERIVED VALUES
   const hasCompletedOnboarding = userProfile?.hasDoneOnboardingTask || false;
@@ -221,7 +257,9 @@ const UserDashboard = () => {
 
       const today = new Date().toLocaleDateString('en-CA');
       const lastReset = data.lastTaskResetDate?.toDate?.().toLocaleDateString('en-CA');
-      const maxTasks = data.isVIP ? VIP_CONFIG[data.tier?.replace('VIP', '')]?.dailyTasks || 1 : 1;
+      const currentRate = getCurrentTZSRate();
+      const vipConfig = getVIPConfig();
+      const maxTasks = data.isVIP ? vipConfig[data.tier?.replace('VIP', '')]?.dailyTasks || 1 : 1;
 
       if (!hasResetToday.current && lastReset !== today) {
         hasResetToday.current = true;
@@ -286,7 +324,7 @@ const UserDashboard = () => {
 
           toApproveNow.forEach(task => {
             const msg = hasOnboarding
-              ? `Welcome! $${task.paymentAmount.toFixed(2)} for onboarding task approved successfully !`
+              ? `Welcome! $${task.paymentAmount.toFixed(2)} for onboarding task approved!`
               : `+$${task.paymentAmount.toFixed(2)} for completed task approved!`;
             toast.success(msg);
             addNotification(msg);
@@ -309,6 +347,8 @@ const UserDashboard = () => {
 
   // FUNCTIONS
   const startTask = (task) => {
+    console.log('Starting task:', task);
+    
     if (dailyLimitReached) {
       setShowVIPModal(true);
       return;
@@ -320,7 +360,7 @@ const UserDashboard = () => {
       status: 'in-progress',
       startedAt: new Date(),
       completedQuestions: 0,
-      totalQuestions: task.questions.length,
+      totalQuestions: task.questions?.length || 0,
     };
 
     setMyTasks(prev => {
@@ -329,6 +369,7 @@ const UserDashboard = () => {
       return updated;
     });
 
+    console.log('Navigating to:', `/working/${task.id}`);
     toast.success('Task Started!', { icon: <Briefcase className="w-5 h-5" /> });
     navigate(`/working/${task.id}`);
   };
@@ -339,96 +380,152 @@ const UserDashboard = () => {
     localStorage.setItem(`notifications_${currentUser.uid}`, JSON.stringify(updated));
   };
 
-  
-  const handleRealVIPUpgrade = async () => {
+  // PALMPESA VIP UPGRADE WITH ANIMATED MODAL
+  const handlePalmPesaUpgrade = async () => {
     if (!selectedVIP) return toast.error('Select a VIP tier');
     
-    const normalized = normalizePhoneNumber(mpesaNumber);
-    if (!normalized || !isValidMpesaNumber(mpesaNumber)) 
-      return toast.error('Invalid M-Pesa number');
+    const normalized = normalizeTZPhoneNumber(phoneNumber);
+    if (!normalized || !isValidTZPhoneNumber(phoneNumber)) 
+      return toast.error('Invalid Tanzania phone number');
 
     setIsProcessing(true);
+    setShowVIPModal(false);
+    setShowPaymentModal(true);
+    setAnimationStep(0);
 
-    const liveRate = getCurrentExchangeRate();
     const usdPrice = VIP_CONFIG[selectedVIP].priceUSD;
-    const kesAmount = Math.round(usdPrice * liveRate);
+    const tzsAmount = VIP_CONFIG[selectedVIP].priceTZS;
+    const transactionId = `VIP_${selectedVIP}_${currentUser.uid}_${Date.now()}`;
 
-    const clientReference = `VIP_${currentUser.uid}_${Date.now()}`;
+    // Store payment data for modal display
+    setPaymentData({
+      tier: selectedVIP,
+      amount: tzsAmount,
+      usd: usdPrice,
+      phone: phoneNumber,
+      rate: tzsRate,
+      tasks: VIP_CONFIG[selectedVIP].dailyTasks
+    });
 
     try {
-      const res = await fetch('/api/stk-push', {
+      const res = await fetch('/api/palmpesa-pay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          phoneNumber: normalized,
-          amount: kesAmount,
-          reference: clientReference,
-          description: `${selectedVIP} VIP Upgrade • $${usdPrice} USD @ ${liveRate.toFixed(2)} KES/USD`,
+          action: 'pay',
+          phone: normalized,
+          amount: tzsAmount,
+          transaction_id: transactionId,
+          name: userProfile?.name || 'VIP Customer',
+          email: userProfile?.email || currentUser?.email || 'customer@remote-tasks.it.com'
         }),
       });
 
       const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'STK push failed');
+      
+      console.log('PalmPesa response:', data);
+      
+      if (data.error === true) {
+        throw new Error(data.message || 'Payment initiation failed');
+      }
 
-      toast.info(
-        <div className="text-xs">
-          <p>STK push sent to {mpesaNumber}</p>
-          <p className="text-emerald-300 mt-1">
-            Amount: Ksh.{kesAmount.toLocaleString()} (≈ ${usdPrice} @ {liveRate.toFixed(2)} KES/USD)
-          </p>
-        </div>,
-        { autoClose: 15000 }
-      );
+      const isSuccess = data.order_id;
+      
+      if (!isSuccess) {
+        throw new Error(data.message || 'Payment failed');
+      }
+
+      const orderId = data.order_id;
+
+      // Move to step 1 - Payment Approved
+      setTimeout(() => setAnimationStep(1), 2000);
+
+      let attempts = 0;
+      const maxAttempts = 24;
 
       const poll = setInterval(async () => {
+        attempts++;
+
         try {
-          const statusRes = await fetch(`/api/transaction-status?reference=${encodeURIComponent(data.payheroReference)}`);
+          const statusRes = await fetch('/api/palmpesa-pay', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'status',
+              order_id: orderId
+            })
+          });
+
           const statusData = await statusRes.json();
 
-          if (statusData.status === 'SUCCESS') {
+          console.log(`[${attempts}/${maxAttempts}] Payment status:`, statusData);
+
+          if (statusData.data && statusData.data[0]) {
+            console.log('Payment detail:', statusData.data[0]);
+          }
+
+          const paymentData = statusData.data && statusData.data[0];
+          
+          const isPaid = statusData.result === 'SUCCESS' && 
+                         paymentData && 
+                         (paymentData.payment_status === 'COMPLETED' ||
+                          paymentData.payment_status === 'PAID' ||
+                          paymentData.payment_status === 'SUCCESS');
+
+          const isFailed = paymentData && 
+                           (paymentData.payment_status === 'FAILED' || 
+                            paymentData.payment_status === 'CANCELLED');
+
+          if (isPaid) {
             clearInterval(poll);
-            toast.success('Payment confirmed! VIP upgraded 🎉');
-            await finalizeVIPUpgrade();
-          } else if (['FAILED', 'CANCELLED'].includes(statusData.status)) {
+            
+            // Move to step 2 - Success
+            setAnimationStep(2);
+            
+            // Finalize VIP upgrade
+            const newMax = VIP_CONFIG[selectedVIP].dailyTasks;
+            await updateDoc(doc(db, 'users', currentUser.uid), {
+              isVIP: true,
+              tier: `${selectedVIP}VIP`,
+              dailyTasksRemaining: newMax,
+              lastTaskResetDate: serverTimestamp(),
+              vipUpgradedAt: serverTimestamp(),
+            });
+
+            setUserProfile(prev => ({ ...prev, isVIP: true, tier: `${selectedVIP}VIP` }));
+            setShowConfetti(true);
+            setTimeout(() => setShowConfetti(false), 7000);
+            setIsProcessing(false);
+          } 
+          else if (isFailed) {
             clearInterval(poll);
-            toast.error('Payment failed or cancelled');
+            setShowPaymentModal(false);
+            toast.error('❌ Payment failed or cancelled');
             setIsProcessing(false);
           }
+          else if (attempts >= maxAttempts) {
+            clearInterval(poll);
+            setShowPaymentModal(false);
+            toast.warn('⏱️ Payment verification timed out. Contact support if money was deducted.');
+            setIsProcessing(false);
+          }
+
         } catch (e) {
-          console.error('Polling error:', e);
+          console.error('Status check error:', e);
+          if (attempts >= maxAttempts) {
+            clearInterval(poll);
+            setShowPaymentModal(false);
+            setIsProcessing(false);
+          }
         }
       }, 5000);
 
-      setTimeout(() => {
-        clearInterval(poll);
-        if (isProcessing) {
-          toast.warn('Payment timed out — check your phone');
-          setIsProcessing(false);
-        }
-      }, 120000);
-
     } catch (e) {
-      toast.error(e.message || 'Upgrade failed');
+      console.error('PalmPesa payment error:', e);
+      setShowPaymentModal(false);
+      toast.error(e.message || 'Payment failed. Please try again.');
       setIsProcessing(false);
     }
-  };
-
-  const finalizeVIPUpgrade = async () => {
-    const newMax = VIP_CONFIG[selectedVIP].dailyTasks;
-    await updateDoc(doc(db, 'users', currentUser.uid), {
-      isVIP: true,
-      tier: `${selectedVIP}VIP`,
-      dailyTasksRemaining: newMax,
-      lastTaskResetDate: serverTimestamp(),
-      vipUpgradedAt: serverTimestamp(),
-    });
-    setUserProfile(prev => ({ ...prev, isVIP: true, tier: `${selectedVIP}VIP` }));
-    toast.success(`${selectedVIP} VIP Activated! ${newMax} tasks/day unlocked!`);
-    setShowConfetti(true);
-    setTimeout(() => setShowConfetti(false), 7000);
-    setShowVIPModal(false);
-    setSelectedVIP('');
-    setMpesaNumber('');
   };
 
   if (!currentUser || !userProfile) {
@@ -506,7 +603,7 @@ const UserDashboard = () => {
                 <Star className="w-8 h-8 text-white" />
               </div>
               <div className="flex-1">
-                <h3 className="text-xl font-black mb-2">Welcome to Remote AI Tasks! 🎉</h3>
+                <h3 className="text-xl font-black mb-2">Karibu! Welcome to Remote AI Tasks! 🎉</h3>
                 <p className="text-green-900 mb-3">
                   Complete your first onboarding task below to unlock all available tasks and start earning!
                 </p>
@@ -522,7 +619,7 @@ const UserDashboard = () => {
         <div className="mb-8">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <h1 className="text-2xl font-black text-white">
-              {hasCompletedOnboarding ? 'Welcome back' : 'Get Started'}
+              {hasCompletedOnboarding ? 'Karibu tena!' : 'Anza Sasa!'}
             </h1>
             <div className="flex items-center gap-4 text-sm text-green-100">
               <div>
@@ -550,25 +647,20 @@ const UserDashboard = () => {
               <div className="relative z-10">
                 <div className="flex items-center justify-between mb-5">
                   <h3 className="text-base font-semibold text-green-200">Financial Overview</h3>
-
                   <p className="text-xs font-medium text-lime-400 opacity-90">
                     <span className="inline-flex items-center gap-1.5">
                       <span className="relative flex">
-                        <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-red-500 opacity-75"></span>
-                        <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500"></span>
+                        <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-lime-500 opacity-75"></span>
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-lime-500"></span>
                       </span>
-                      <span>
-                        Approx : 1 USD = {getCurrentExchangeRate().toFixed(4)} KES
-                      </span>
+                      <span>1 USD = {tzsRate.toLocaleString()} TZS</span>
                     </span>
                   </p>
                 </div>
 
                 <div className="bg-white/10 backdrop-blur-md rounded-xl p-5 border border-white/20">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-sm text-green-300">
-                      Available Balance ({dateRange})
-                    </p>
+                    <p className="text-sm text-green-300">Available Balance ({dateRange})</p>
                     <DollarSign className="w-5 h-5 text-lime-400" />
                   </div>
 
@@ -577,7 +669,7 @@ const UserDashboard = () => {
                   </p>
 
                   <p className="text-sm font-medium text-lime-500 mt-1">
-                    {formatKES(userProfile?.currentbalance ?? 0)}
+                    TSh {Math.round((userProfile?.currentbalance ?? 0) * tzsRate).toLocaleString()}
                   </p>
                 </div>
 
@@ -603,17 +695,8 @@ const UserDashboard = () => {
               <h3 className="text-base font-semibold text-slate-900 mb-5">Today's Performance</h3>
 
               {(() => {
-                const todayCompleted = myTasks.filter(t => 
-                  new Date(t.startedAt).toDateString() === new Date().toDateString() &&
-                  ['completed', 'approved'].includes(t.status)
-                ).length;
-
-                const maxDaily = userProfile?.isVIP
-                  ? VIP_CONFIG[userProfile.tier?.replace('VIP', '')]?.dailyTasks || 1
-                  : 1;
-
-                const remaining = Math.max(0, maxDaily - todayCompleted);
-                const progressPercentage = maxDaily > 0 ? Math.round((todayCompleted / maxDaily) * 100) : 0;
+                const progressPercentage = maxDaily > 0 ? Math.round((todayCompletedCount / maxDaily) * 100) : 0;
+                const remaining = Math.max(0, maxDaily - todayCompletedCount);
 
                 return (
                   <div className="space-y-5">
@@ -621,7 +704,7 @@ const UserDashboard = () => {
                       <div className="flex justify-between items-center mb-2">
                         <span className="text-sm font-medium text-slate-600">Daily Quota</span>
                         <span className="text-sm font-bold text-lime-600">
-                          {todayCompleted} / {maxDaily}
+                          {todayCompletedCount} / {maxDaily}
                         </span>
                       </div>
                       <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
@@ -632,7 +715,7 @@ const UserDashboard = () => {
                       </div>
                       <p className="text-xs text-slate-500 mt-2">
                         {remaining === 0 
-                          ? "Daily limit reached — excellent work!" 
+                          ? "Hongera! Daily limit reached 🎉" 
                           : `${remaining} task${remaining > 1 ? 's' : ''} remaining today`
                         }
                       </p>
@@ -724,17 +807,6 @@ const UserDashboard = () => {
               const cfg = myTask ? statusConfig[myTask.status] : null;
               const Icon = cfg?.icon;
               const isOnboardingTask = !hasCompletedOnboarding && task.id === onboardingTask?.id;
-              
-              const todayCompletedCount = myTasks.filter(t => 
-                new Date(t.startedAt).toDateString() === new Date().toDateString() &&
-                ['completed', 'approved'].includes(t.status)
-              ).length;
-              
-              const maxDaily = userProfile?.isVIP
-                ? VIP_CONFIG[userProfile.tier?.replace('VIP', '')]?.dailyTasks || 1
-                : 1;
-              
-              const dailyLimitReached = todayCompletedCount >= maxDaily;
 
               return (
                 <div
@@ -823,13 +895,13 @@ const UserDashboard = () => {
                         </span>
                       ) : !dailyLimitReached ? (
                         <span className="flex items-center gap-2 truncate">
-                          {isOnboardingTask ? 'Start Onboarding' : 'Start Task'}
+                          {isOnboardingTask ? 'Anza Onboarding' : 'Anza Task'}
                           <ChevronRight className="w-4 h-4 flex-shrink-0 transition-transform group-hover/btn:translate-x-0.5" />
                         </span>
                       ) : (
                         <span className="flex items-center gap-2 truncate">
                           <Crown className="w-4 h-4 flex-shrink-0" />
-                          <span>Start Task</span>
+                          <span>Anza Task</span>
                         </span>
                       )}
                     </button>
@@ -841,184 +913,273 @@ const UserDashboard = () => {
         </section>
       </main>
 
-
-{/* VIP MODAL */}
+      {/* VIP SELECTION MODAL */}
       {showVIPModal && (
-  <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div className="bg-green-950 rounded-2xl p-6 max-w-md w-full border border-white/10 shadow-2xl">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-5">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-lime-400/20 rounded-lg flex items-center justify-center">
-            <Crown className="w-6 h-6 text-lime-400" />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-white">Unlock VIP Access</h2>
-            <p className="text-xs text-green-200">Maximize Your Earning Potential</p>
-          </div>
-        </div>
-        <button 
-          onClick={() => setShowVIPModal(false)}
-          className="p-2 hover:bg-white/10 rounded-lg text-green-200 hover:text-white transition"
-        >
-          <X className="w-5 h-5" />
-        </button>
-      </div>
-  
-      {/* Value Proposition */}
-      <div className="bg-lime-400/20 border border-lime-400 rounded-lg p-4 mb-6">
-        <div className="flex items-start gap-3">
-          <div className="w-8 h-8 bg-lime-400 rounded-lg flex items-center justify-center flex-shrink-0">
-            <Zap className="w-5 h-5 text-green-950" />
-          </div>
-          <div>
-            <p className="text-white font-bold text-sm mb-1">Why Upgrade to VIP?</p>
-            <ul className="space-y-1.5 text-xs text-green-200">
-              <li className="flex items-center gap-2">
-                <Check className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
-                <span>Complete up to <strong className="text-white">15 tasks daily</strong> (vs 1 task)</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
-                <span>Earn <strong className="text-white">3-15× more per day</strong></span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
-                <span><strong className="text-white">Priority support</strong> & faster withdrawals</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
-                <span>Access to <strong className="text-white">premium high-paying tasks</strong></span>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </div>
-  
-      {/* VIP Tiers */}
-      <div className="mb-5">
-        <p className="text-xs font-semibold text-green-200 mb-3 uppercase tracking-wide">Choose Your Plan</p>
-        <div className="grid grid-cols-3 gap-3">
-          {Object.entries(VIP_CONFIG).map(([tier, config]) => {
-            const isSelected = selectedVIP === tier;
-            const isRecommended = tier === 'Silver';
-  
-            return (
-              <label
-                key={tier}
-                className={`relative cursor-pointer rounded-xl border-2 p-3.5 text-center transition-all ${
-                  isSelected 
-                    ? 'border-lime-400 bg-lime-400/10 shadow-lg shadow-lime-400/20' 
-                    : 'border-white/10 bg-green-900 hover:border-lime-400/50'
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-green-950 rounded-2xl p-6 max-w-md w-full border border-white/10 shadow-2xl">
+            <div className="flex justify-between items-center mb-5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-lime-400/20 rounded-lg flex items-center justify-center">
+                  <Crown className="w-6 h-6 text-lime-400" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">Fungua VIP Access</h2>
+                  <p className="text-xs text-green-200">Ongeza Kipato Chako 🇹🇿</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowVIPModal(false)}
+                className="p-2 hover:bg-white/10 rounded-lg text-green-200 hover:text-white transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="bg-lime-400/20 border border-lime-400 rounded-lg p-4 mb-6">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 bg-lime-400 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <Zap className="w-5 h-5 text-green-950" />
+                </div>
+                <div>
+                  <p className="text-white font-bold text-sm mb-1">Kwa Nini VIP?</p>
+                  <ul className="space-y-1.5 text-xs text-green-200">
+                    <li className="flex items-center gap-2">
+                      <Check className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
+                      <span>Kazi <strong className="text-white">hadi 15 kwa siku</strong> (badala ya 1)</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
+                      <span>Pata <strong className="text-white">3-15× zaidi kwa siku</strong></span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
+                      <span><strong className="text-white">Msaada wa haraka</strong> & utoaji wa pesa</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div className="mb-5">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold text-green-200 uppercase tracking-wide">Chagua Mpango Wako</p>
+               
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                {Object.entries(VIP_CONFIG).map(([tier, config]) => {
+                  const isSelected = selectedVIP === tier;
+                  const isRecommended = tier === 'Silver';
+
+                  return (
+                    <label
+                      key={tier}
+                      className={`relative cursor-pointer rounded-xl border-2 p-3.5 text-center transition-all ${
+                        isSelected 
+                          ? 'border-lime-400 bg-lime-400/10 shadow-lg shadow-lime-400/20' 
+                          : 'border-white/10 bg-green-900 hover:border-lime-400/50'
+                      }`}
+                    >
+                      {isRecommended && (
+                        <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-lime-400 text-green-950 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">
+                          Bora Zaidi
+                        </span>
+                      )}
+                      
+                      <input
+                        type="radio"
+                        name="vipTier"
+                        value={tier}
+                        checked={isSelected}
+                        onChange={(e) => setSelectedVIP(e.target.value)}
+                        className="sr-only"
+                      />
+
+                      <Crown className={`w-7 h-7 mx-auto mb-2 ${isSelected ? 'text-lime-400' : 'text-green-400'}`} />
+                      <p className={`font-bold text-xs mb-1 ${isSelected ? 'text-white' : 'text-green-200'}`}>{tier}</p>
+                      <p className={`text-lg font-black mb-1 ${isSelected ? 'text-lime-400' : 'text-white'}`}>
+                          ${config.priceUSD}
+                      </p>
+                      <p className="text-[10px] text-green-300">TSh {config.priceTZS.toLocaleString()}</p>
+                      <div className="mt-2 pt-2 border-t border-white/10">
+                        <p className="text-xs font-semibold text-lime-400">{config.dailyTasks} Kazi/Siku</p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            {selectedVIP && (
+              <div className="bg-green-900 border-2 border-lime-400 rounded-lg p-4 mb-5">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-green-200">Gharama</span>
+                
+                <div className="flex items-center gap-1.5 bg-lime-400/20 px-2.5 py-1 rounded-full border border-lime-400/30">
+                  <span className="relative flex">
+                    <span className="animate-ping absolute inline-flex h-1.5 w-1.5 rounded-full bg-lime-400 opacity-75"></span>
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-lime-400"></span>
+                  </span>
+                  <span className="text-[10px] font-bold text-lime-400">1 USD = {tzsRate.toLocaleString()} TZS</span>
+                </div>
+
+                  <span className="text-xs bg-lime-400/20 text-lime-400 px-2 py-1 rounded font-semibold">
+                    {selectedVIP} VIP
+                  </span>
+                </div>
+                <p className="text-3xl font-black text-lime-400 mb-1">
+                  TSh {VIP_CONFIG[selectedVIP].priceTZS.toLocaleString()}
+                </p>
+                <p className="text-xs text-green-200">
+                  • Fungua {VIP_CONFIG[selectedVIP].dailyTasks} kazi kwa siku
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-green-200 mb-2">
+                  Namba ya Simu (Tanzania)
+                </label>
+                <div className="relative">
+                  <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-green-400" />
+                  <input
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    placeholder="0769500302 au 0652345678"
+                    className="w-full pl-10 pr-4 py-3 rounded-lg bg-green-900 border-2 border-white/10 text-white placeholder-green-400 focus:border-lime-400 focus:outline-none transition"
+                  />
+                </div>
+                <p className="text-xs text-green-300 mt-1.5">Vodacom, Tigo, Airtel, au Halotel</p>
+              </div>
+
+              <button
+                onClick={handlePalmPesaUpgrade}
+                disabled={!selectedVIP || !isValidTZPhoneNumber(phoneNumber)}
+                className={`w-full py-3.5 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all ${
+                  selectedVIP && isValidTZPhoneNumber(phoneNumber)
+                    ? 'bg-lime-400 hover:bg-lime-500 text-green-950 shadow-lg hover:shadow-xl hover:shadow-lime-400/20 active:scale-[0.98]'
+                    : 'bg-white/10 text-green-400 cursor-not-allowed'
                 }`}
               >
-                {isRecommended && (
-                  <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-lime-400 text-green-950 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">
-                    Best Value
-                  </span>
-                )}
-                
-                <input
-                  type="radio"
-                  name="vipTier"
-                  value={tier}
-                  checked={isSelected}
-                  onChange={(e) => setSelectedVIP(e.target.value)}
-                  className="sr-only"
-                />
-  
-                <Crown className={`w-7 h-7 mx-auto mb-2 ${isSelected ? 'text-lime-400' : 'text-green-400'}`} />
-                <p className={`font-bold text-xs mb-1 ${isSelected ? 'text-white' : 'text-green-200'}`}>{tier}</p>
-                <p className={`text-lg font-black mb-1 ${isSelected ? 'text-lime-400' : 'text-white'}`}>
-                  ${config.priceUSD}
-                </p>
-                <p className="text-[10px] text-green-300">{formatKES(config.priceUSD)}</p>
-                <div className="mt-2 pt-2 border-t border-white/10">
-                  <p className="text-xs font-semibold text-lime-400">{config.dailyTasks} Tasks/Day</p>
+                <Smartphone className="w-5 h-5" />
+                {selectedVIP ? `Lipa TSh ${VIP_CONFIG[selectedVIP].priceTZS.toLocaleString()}` : 'Chagua Mpango'}
+              </button>
+
+              <div className="flex items-center justify-center gap-4 text-xs text-green-300">
+                <div className="flex items-center gap-1">
+                  <CheckCircle className="w-3.5 h-3.5 text-lime-400" />
+                  <span>Malipo Salama</span>
                 </div>
-              </label>
-            );
-          })}
-        </div>
-      </div>
-  
-      {/* Payment Confirmation */}
-      {selectedVIP && (
-        <div className="bg-green-900 border-2 border-lime-400 rounded-lg p-4 mb-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-green-200">Your Investment</span>
-            <span className="text-xs bg-lime-400/20 text-lime-400 px-2 py-1 rounded font-semibold">
-              {selectedVIP} VIP
-            </span>
+                <div className="flex items-center gap-1">
+                  <CheckCircle className="w-3.5 h-3.5 text-lime-400" />
+                  <span>Activation Haraka</span>
+                </div>
+              </div>
+
+              <div className="text-center pt-2">
+                <p className="text-xs text-green-300 mb-2">Mitandao Inayotumika:</p>
+                <div className="flex justify-center gap-2 text-[10px] text-green-200">
+                  <span className="bg-white/10 px-2 py-1 rounded">Vodacom</span>
+                  <span className="bg-white/10 px-2 py-1 rounded">Tigo</span>
+                  <span className="bg-white/10 px-2 py-1 rounded">Airtel</span>
+                  <span className="bg-white/10 px-2 py-1 rounded">Halotel</span>
+                </div>
+              </div>
+            </div>
           </div>
-          <p className="text-3xl font-black text-lime-400 mb-1">
-            {formatKES(VIP_CONFIG[selectedVIP].priceUSD)}
-          </p>
-          <p className="text-xs text-green-200">
-            ≈ ${VIP_CONFIG[selectedVIP].priceUSD} USD • Unlock {VIP_CONFIG[selectedVIP].dailyTasks} tasks daily
-          </p>
         </div>
       )}
-  
-      {/* M-Pesa Input */}
-      <div className="space-y-4">
-        <div>
-          <label className="block text-xs font-semibold text-green-200 mb-2">
-            M-Pesa Number
-          </label>
-          <div className="relative">
-            <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-green-400" />
-            <input
-              type="tel"
-              value={mpesaNumber}
-              onChange={(e) => setMpesaNumber(e.target.value)}
-              placeholder="0712345678 or 0112345678"
-              className="w-full pl-10 pr-4 py-3 rounded-lg bg-green-900 border-2 border-white/10 text-white placeholder-green-400 focus:border-lime-400 focus:outline-none transition"
-            />
+
+      {/* ANIMATED PAYMENT PROCESSING MODAL */}
+      {showPaymentModal && paymentData && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-lg z-50 flex items-center justify-center p-4">
+          <div className="bg-green-950 rounded-2xl p-8 max-w-md w-full shadow-2xl border border-white/10">
+            <div className="text-center">
+              {animationStep === 0 && (
+                <div>
+                  <div className="w-20 h-20 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Zap className="w-10 h-10 text-blue-400 animate-pulse" />
+                  </div>
+                  <h3 className="text-2xl font-black text-white mb-3">Processing Payment</h3>
+                  <p className="text-green-200 mb-2">Checking your phone for confirmation...</p>
+                  <p className="text-xs text-green-400 mb-6">Enter your PIN to complete payment</p>
+                  <div className="w-8 h-8 border-4 border-lime-400 border-t-transparent rounded-full animate-spin mx-auto" />
+                </div>
+              )}
+
+              {animationStep === 1 && (
+                <div>
+                  <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <BadgeCheck className="w-10 h-10 text-lime-400 animate-bounce" />
+                  </div>
+                  <h3 className="text-2xl font-black text-white mb-3">Payment Received!</h3>
+                  <p className="text-green-200 mb-6">Activating your VIP access...</p>
+                  <div className="flex justify-center space-x-2">
+                    <div className="w-3 h-3 bg-lime-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-3 h-3 bg-lime-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <div className="w-3 h-3 bg-lime-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                </div>
+              )}
+
+              {animationStep === 2 && (
+                <div>
+                  <div className="w-20 h-20 bg-lime-400 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <PartyPopper className="w-10 h-10 text-green-950" />
+                  </div>
+                  <h3 className="text-2xl font-black text-white mb-3">Hongera! 🎉</h3>
+                  <p className="text-green-200 mb-2">VIP activated successfully</p>
+                  
+                  <div className="bg-green-900 rounded-xl p-5 border border-lime-400 mt-6">
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="text-green-200">Amount Paid:</span>
+                      <span className="text-2xl font-black text-lime-400">
+                        TSh {paymentData.amount.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-green-300">Tier:</span>
+                      <span className="font-bold text-white">{paymentData.tier} VIP</span>
+                    </div>
+                    <div className="flex justify-between text-sm mb-3">
+                      <span className="text-green-300">Daily Tasks:</span>
+                      <span className="font-bold text-lime-400">{paymentData.tasks} tasks/day</span>
+                    </div>
+                    <div className="border-t border-white/10 pt-3">
+                      <p className="text-xs text-green-300">
+                        To: {paymentData.phone}
+                      </p>
+                      <p className="text-xs text-lime-400 mt-1">
+                        Activated: Instantly • Valid: Monthly
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 space-y-3">
+                    <button
+                      onClick={() => {
+                        setShowPaymentModal(false);
+                        setSelectedVIP('');
+                        setPhoneNumber('');
+                        setPaymentData(null);
+                        setAnimationStep(0);
+                      }}
+                      className="w-full bg-lime-400 hover:bg-lime-500 text-green-950 font-bold py-3 rounded-xl transition"
+                    >
+                      Start Earning More!
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-          <p className="text-xs text-green-300 mt-1.5">Enter your Safaricom number to receive payment prompt</p>
         </div>
-  
-        {/* Action Button */}
-        <button
-          onClick={handleRealVIPUpgrade}
-          disabled={isProcessing || !selectedVIP || !isValidMpesaNumber(mpesaNumber)}
-          className={`w-full py-3.5 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all ${
-            selectedVIP && isValidMpesaNumber(mpesaNumber)
-              ? 'bg-lime-400 hover:bg-lime-500 text-green-950 shadow-lg hover:shadow-xl hover:shadow-lime-400/20 active:scale-[0.98]'
-              : 'bg-white/10 text-green-400 cursor-not-allowed'
-          }`}
-        >
-          {isProcessing ? (
-            <>
-              <div className="w-5 h-5 border-2 border-green-950 border-t-transparent rounded-full animate-spin" />
-              Processing Payment...
-            </>
-          ) : (
-            <>
-              <Smartphone className="w-5 h-5" />
-              {selectedVIP ? `Upgrade to ${selectedVIP} VIP` : 'Select a Plan to Continue'}
-            </>
-          )}
-        </button>
-  
-        {/* Trust Indicators */}
-        <div className="flex items-center justify-center gap-4 text-xs text-green-300">
-          <div className="flex items-center gap-1">
-            <CheckCircle className="w-3.5 h-3.5 text-lime-400" />
-            <span>Secure Payment</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <CheckCircle className="w-3.5 h-3.5 text-lime-400" />
-            <span>Instant Activation</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
+      )}
 
       <NotificationSound />
+      
+      {/* Notifications Panel */}
       {showNotifications && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-start justify-end p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-y-auto">
@@ -1037,7 +1198,7 @@ const UserDashboard = () => {
             </div>
             <div className="p-4 space-y-3">
               {notifications.length === 0 ? (
-                <p className="text-center text-slate-500 py-8">No notifications yet.</p>
+                <p className="text-center text-slate-500 py-8">Hakuna arifa bado.</p>
               ) : (
                 notifications.map(notif => (
                   <div key={notif.id} className={`p-3 rounded-lg border ${notif.read ? 'bg-white border-slate-200' : 'bg-lime-50 border-lime-300'}`}>
