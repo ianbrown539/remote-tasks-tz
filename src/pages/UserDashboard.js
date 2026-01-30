@@ -161,13 +161,13 @@ const UserDashboard = () => {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedVIP, setSelectedVIP] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [ setIsProcessing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [timeLeft, setTimeLeft] = useState(getNextThursday() - new Date());
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [tzsRate, setTzsRate] = useState(getCurrentTZSRate());
   
-  // Payment animation states
+  // Payment animation states - FIXED: consistent naming
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [animationStep, setAnimationStep] = useState(0);
   const [paymentData, setPaymentData] = useState(null);
@@ -175,13 +175,13 @@ const UserDashboard = () => {
   const hasResetToday = useRef(false);
 
   // Memoize VIP_CONFIG to prevent recalculation on every render
-  const VIP_CONFIG = React.useMemo(() => getVIPConfig())
+  const VIP_CONFIG = React.useMemo(() => getVIPConfig(), [tzsRate]);
 
   // Update TZS rate periodically
   useEffect(() => {
     const rateTimer = setInterval(() => {
       setTzsRate(getCurrentTZSRate());
-    }, 5000); // Update every 30 seconds
+    }, 5000); // Update every 5 seconds
     return () => clearInterval(rateTimer);
   }, []);
 
@@ -257,6 +257,7 @@ const UserDashboard = () => {
 
       const today = new Date().toLocaleDateString('en-CA');
       const lastReset = data.lastTaskResetDate?.toDate?.().toLocaleDateString('en-CA');
+      const currentRate = getCurrentTZSRate();
       const vipConfig = getVIPConfig();
       const maxTasks = data.isVIP ? vipConfig[data.tier?.replace('VIP', '')]?.dailyTasks || 1 : 1;
 
@@ -379,13 +380,18 @@ const UserDashboard = () => {
     localStorage.setItem(`notifications_${currentUser.uid}`, JSON.stringify(updated));
   };
 
-  // PALMPESA VIP UPGRADE WITH ANIMATED MODAL
+  // PALMPESA VIP UPGRADE WITH ANIMATED MODAL - FIXED
   const handlePalmPesaUpgrade = async () => {
-    if (!selectedVIP) return toast.error('Select a VIP tier');
+    if (!selectedVIP) {
+      toast.error('Select a VIP tier');
+      return;
+    }
     
     const normalized = normalizeTZPhoneNumber(phoneNumber);
-    if (!normalized || !isValidTZPhoneNumber(phoneNumber)) 
-      return toast.error('Invalid Tanzania phone number');
+    if (!normalized || !isValidTZPhoneNumber(phoneNumber)) {
+      toast.error('Invalid Tanzania phone number');
+      return;
+    }
 
     setIsProcessing(true);
     setShowVIPModal(false);
@@ -407,6 +413,12 @@ const UserDashboard = () => {
     });
 
     try {
+      // Ensure name has at least 2 words (PalmPesa requirement)
+      let customerName = userProfile?.name || 'VIP Customer';
+      if (customerName.trim().split(/\s+/).length < 2) {
+        customerName = `${customerName} User`;
+      }
+
       const res = await fetch('/api/palmpesa-pay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -415,7 +427,7 @@ const UserDashboard = () => {
           phone: normalized,
           amount: tzsAmount,
           transaction_id: transactionId,
-          name: userProfile?.name || 'VIP Customer',
+          name: customerName,
           email: userProfile?.email || currentUser?.email || 'customer@remote-tasks.it.com'
         }),
       });
@@ -463,17 +475,17 @@ const UserDashboard = () => {
             console.log('Payment detail:', statusData.data[0]);
           }
 
-          const paymentData = statusData.data && statusData.data[0];
+          const paymentDataDetail = statusData.data && statusData.data[0];
           
           const isPaid = statusData.result === 'SUCCESS' && 
-                         paymentData && 
-                         (paymentData.payment_status === 'COMPLETED' ||
-                          paymentData.payment_status === 'PAID' ||
-                          paymentData.payment_status === 'SUCCESS');
+                         paymentDataDetail && 
+                         (paymentDataDetail.payment_status === 'COMPLETED' ||
+                          paymentDataDetail.payment_status === 'PAID' ||
+                          paymentDataDetail.payment_status === 'SUCCESS');
 
-          const isFailed = paymentData && 
-                           (paymentData.payment_status === 'FAILED' || 
-                            paymentData.payment_status === 'CANCELLED');
+          const isFailed = paymentDataDetail && 
+                           (paymentDataDetail.payment_status === 'FAILED' || 
+                            paymentDataDetail.payment_status === 'CANCELLED');
 
           if (isPaid) {
             clearInterval(poll);
@@ -1054,15 +1066,15 @@ const UserDashboard = () => {
 
               <button
                 onClick={handlePalmPesaUpgrade}
-                disabled={!selectedVIP || !isValidTZPhoneNumber(phoneNumber)}
+                disabled={!selectedVIP || !isValidTZPhoneNumber(phoneNumber) || isProcessing}
                 className={`w-full py-3.5 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all ${
-                  selectedVIP && isValidTZPhoneNumber(phoneNumber)
+                  selectedVIP && isValidTZPhoneNumber(phoneNumber) && !isProcessing
                     ? 'bg-lime-400 hover:bg-lime-500 text-green-950 shadow-lg hover:shadow-xl hover:shadow-lime-400/20 active:scale-[0.98]'
                     : 'bg-white/10 text-green-400 cursor-not-allowed'
                 }`}
               >
                 <Smartphone className="w-5 h-5" />
-                {selectedVIP ? `Lipa TSh ${VIP_CONFIG[selectedVIP].priceTZS.toLocaleString()}` : 'Chagua Mpango'}
+                {isProcessing ? 'Processing...' : selectedVIP ? `Lipa TSh ${VIP_CONFIG[selectedVIP].priceTZS.toLocaleString()}` : 'Chagua Mpango'}
               </button>
 
               <div className="flex items-center justify-center gap-4 text-xs text-green-300">
@@ -1112,8 +1124,8 @@ const UserDashboard = () => {
                   <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
                     <BadgeCheck className="w-10 h-10 text-lime-400 animate-bounce" />
                   </div>
-                  <h3 className="text-2xl font-black text-white mb-3">Payment Received!</h3>
-                  <p className="text-green-200 mb-6">Activating your VIP access...</p>
+                 <h3 className="text-2xl font-black text-white mb-3">Payment prompt sent!</h3>
+                  <p className="text-green-200 mb-6">Waiting for payment...</p>
                   <div className="flex justify-center space-x-2">
                     <div className="w-3 h-3 bg-lime-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                     <div className="w-3 h-3 bg-lime-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />

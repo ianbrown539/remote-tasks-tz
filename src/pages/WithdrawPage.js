@@ -1,4 +1,4 @@
-// src/pages/WithdrawPage.js
+// src/pages/WithdrawPage.js - TANZANIA VERSION WITH PALMPESA
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth, db } from '../services/firebase';
@@ -45,12 +45,16 @@ import {
 } from 'lucide-react';
 import Confetti from 'react-confetti';
 import 'react-toastify/dist/ReactToastify.css';
-import { getCurrentExchangeRate, formatKES } from './UserDashboard';
+import { getCurrentTZSRate, formatTZS } from './UserDashboard';
 
-const VIP_CONFIG = {
-  Bronze: { priceUSD: 1.99, dailyTasks: 3 },
-  Silver: { priceUSD: 4.99, dailyTasks: 8 }, // Best value
-  Gold:   { priceUSD: 9.99, dailyTasks: 15 }, // Premium tier
+// VIP Configuration - TANZANIA PRICING
+const getVIPConfig = () => {
+  const rate = getCurrentTZSRate();
+  return {
+    Bronze: { priceUSD: 0.09, priceTZS: Math.round(0.09 * rate), dailyTasks: 3 },
+    Silver: { priceUSD: 0.10, priceTZS: Math.round(0.10 * rate), dailyTasks: 8 },
+    Gold:   { priceUSD: 0.11, priceTZS: Math.round(0.11 * rate), dailyTasks: 15 },
+  };
 };
 
 const MIN_WITHDRAWAL_USD = 10.00;
@@ -64,6 +68,29 @@ const REQUIRED_VIP_REFERRALS = 2;
 // Referral bonuses
 const VIP_UPGRADE_BONUS = 10;
 
+// Tanzania phone validation
+const isValidTZPhoneNumber = (input) => {
+  if (!input) return false;
+  const cleaned = input.replace(/\D/g, '');
+  return /^0(6[2-9]|7[1-9])\d{7}$/.test(cleaned) || /^255(6[2-9]|7[1-9])\d{7}$/.test(cleaned);
+};
+
+const normalizeTZPhoneNumber = (input) => {
+  if (!input) return null;
+  const cleaned = input.replace(/\D/g, '');
+  
+  if (/^0(6[2-9]|7[1-9])\d{7}$/.test(cleaned)) {
+    return `255${cleaned.slice(1)}`;
+  }
+  
+  if (/^255(6[2-9]|7[1-9])\d{7}$/.test(cleaned)) {
+    return cleaned;
+  }
+  
+  return null;
+};
+
+// Backward compatibility - Kenya phone functions (for withdrawal methods)
 const normalizePhoneNumber = (input) => {
   if (!input) return null;
   const cleaned = input.replace(/\D/g, '');
@@ -99,17 +126,36 @@ const WithdrawPage = () => {
     minAmount: false,
     minTasks: false,
   });
+  
   // VIP Upgrade State
   const [showVIPModal, setShowVIPModal] = useState(false);
   const [selectedVIP, setSelectedVIP] = useState('');
-  const [mpesaNumber, setMpesaNumber] = useState('');
+  const [tzsPhoneNumber, setTzsPhoneNumber] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [tzsRate, setTzsRate] = useState(getCurrentTZSRate());
+  
+  // Payment animation states
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentData, setPaymentData] = useState(null);
+  const [paymentAnimationStep, setPaymentAnimationStep] = useState(0);
+  
   // Animated Withdrawal State
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [withdrawalData, setWithdrawalData] = useState(null);
   const [animationStep, setAnimationStep] = useState(0);
   const [showConfetti, setShowConfetti] = useState(false);
   const [refreshingWithdrawals, setRefreshingWithdrawals] = useState(false);
+
+  // Memoize VIP_CONFIG
+  const VIP_CONFIG = React.useMemo(() => getVIPConfig(), [tzsRate]);
+
+  // Update TZS rate periodically
+  useEffect(() => {
+    const rateTimer = setInterval(() => {
+      setTzsRate(getCurrentTZSRate());
+    }, 5000);
+    return () => clearInterval(rateTimer);
+  }, []);
 
   // Check if basic requirements (first 3) are complete
   const basicRequirementsMet = eligibility.kycComplete && eligibility.minAmount && eligibility.minTasks;
@@ -269,79 +315,155 @@ const WithdrawPage = () => {
     }, 5000);
   };
 
-const handleRealVIPUpgrade = async () => {
-    if (!selectedVIP) return toast.error('Select a VIP tier');
+  // PALMPESA VIP UPGRADE - WITH ANIMATED MODAL
+  const handlePalmPesaVIPUpgrade = async () => {
+    if (!selectedVIP) {
+      toast.error('Select a VIP tier');
+      return;
+    }
     
-    const normalized = normalizePhoneNumber(mpesaNumber);
-    if (!normalized || !isValidMpesaNumber(mpesaNumber)) 
-      return toast.error('Invalid M-Pesa number');
+    const normalized = normalizeTZPhoneNumber(tzsPhoneNumber);
+    if (!normalized || !isValidTZPhoneNumber(tzsPhoneNumber)) {
+      toast.error('Invalid Tanzania phone number');
+      return;
+    }
 
     setIsProcessing(true);
+    setShowVIPModal(false);
+    setShowPaymentModal(true);
+    setPaymentAnimationStep(0);
 
-    const liveRate = getCurrentExchangeRate();
     const usdPrice = VIP_CONFIG[selectedVIP].priceUSD;
-    const kesAmount = Math.round(usdPrice * liveRate);
+    const tzsAmount = VIP_CONFIG[selectedVIP].priceTZS;
+    const transactionId = `VIP_${selectedVIP}_${user.uid}_${Date.now()}`;
 
-   const clientReference = `V_${user.uid}_${Date.now()}`;
+    // Ensure name has at least 2 words (PalmPesa requirement)
+    let customerName = profile?.name || 'VIP Customer';
+    if (customerName.trim().split(/\s+/).length < 2) {
+      customerName = `${customerName} User`;
+    }
+
+    // Store payment data for modal display
+    setPaymentData({
+      tier: selectedVIP,
+      amount: tzsAmount,
+      usd: usdPrice,
+      phone: tzsPhoneNumber,
+      rate: tzsRate,
+      tasks: VIP_CONFIG[selectedVIP].dailyTasks
+    });
 
     try {
-      const res = await fetch('/api/stk-push', {
+      const res = await fetch('/api/palmpesa-pay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          phoneNumber: normalized,
-          amount: kesAmount,
-          reference: clientReference,
-          description: `${selectedVIP} VIP Upgrade • $${usdPrice} USD @ ${liveRate.toFixed(2)} KES/USD`,
+          action: 'pay',
+          phone: normalized,
+          amount: tzsAmount,
+          transaction_id: transactionId,
+          name: customerName,
+          email: profile?.email || user?.email || 'customer@remote-tasks.it.com'
         }),
       });
 
       const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'STK push failed');
+      
+      console.log('PalmPesa response:', data);
+      
+      if (data.error === true) {
+        throw new Error(data.message || 'Payment initiation failed');
+      }
 
-      toast.info(
-        <div className="text-xs">
-          <p>STK push sent to {mpesaNumber}</p>
-          <p className="text-emerald-300 mt-1">
-            Amount: Ksh.{kesAmount.toLocaleString()} (≈ ${usdPrice} @ {liveRate.toFixed(2)} KES/USD)
-          </p>
-        </div>,
-        { autoClose: 15000 }
-      );
+      const isSuccess = data.order_id;
+      
+      if (!isSuccess) {
+        throw new Error(data.message || 'Payment failed');
+      }
+
+      const orderId = data.order_id;
+
+      // Move to step 1 - Payment Approved
+      setTimeout(() => setPaymentAnimationStep(1), 2000);
+
+      let attempts = 0;
+      const maxAttempts = 24;
 
       const poll = setInterval(async () => {
+        attempts++;
+
         try {
-          const statusRes = await fetch(`/api/transaction-status?reference=${encodeURIComponent(data.payheroReference)}`);
+          const statusRes = await fetch('/api/palmpesa-pay', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'status',
+              order_id: orderId
+            })
+          });
+
           const statusData = await statusRes.json();
 
-          if (statusData.status === 'SUCCESS') {
+          console.log(`[${attempts}/${maxAttempts}] Payment status:`, statusData);
+
+          if (statusData.data && statusData.data[0]) {
+            console.log('Payment detail:', statusData.data[0]);
+          }
+
+          const paymentDetail = statusData.data && statusData.data[0];
+          
+          const isPaid = statusData.result === 'SUCCESS' && 
+                         paymentDetail && 
+                         (paymentDetail.payment_status === 'COMPLETED' ||
+                          paymentDetail.payment_status === 'PAID' ||
+                          paymentDetail.payment_status === 'SUCCESS');
+
+          const isFailed = paymentDetail && 
+                           (paymentDetail.payment_status === 'FAILED' || 
+                            paymentDetail.payment_status === 'CANCELLED');
+
+          if (isPaid) {
             clearInterval(poll);
-            toast.success('Payment confirmed! VIP upgraded 🎉');
+            
+            // Move to step 2 - Success
+            setPaymentAnimationStep(2);
+            
+            // Finalize VIP upgrade
             await finalizeVIPUpgrade();
-          } else if (['FAILED', 'CANCELLED'].includes(statusData.status)) {
+            setShowConfetti(true);
+            setTimeout(() => setShowConfetti(false), 7000);
+            setIsProcessing(false);
+          } 
+          else if (isFailed) {
             clearInterval(poll);
-            toast.error('Payment failed or cancelled');
+            setShowPaymentModal(false);
+            toast.error('❌ Payment failed or cancelled');
             setIsProcessing(false);
           }
+          else if (attempts >= maxAttempts) {
+            clearInterval(poll);
+            setShowPaymentModal(false);
+            toast.warn('⏱️ Payment verification timed out. Contact support if money was deducted.');
+            setIsProcessing(false);
+          }
+
         } catch (e) {
-          console.error('Polling error:', e);
+          console.error('Status check error:', e);
+          if (attempts >= maxAttempts) {
+            clearInterval(poll);
+            setShowPaymentModal(false);
+            setIsProcessing(false);
+          }
         }
       }, 5000);
 
-      setTimeout(() => {
-        clearInterval(poll);
-        if (isProcessing) {
-          toast.warn('Payment timed out — check your phone');
-          setIsProcessing(false);
-        }
-      }, 120000);
-
     } catch (e) {
-      toast.error(e.message || 'Upgrade failed');
+      console.error('PalmPesa payment error:', e);
+      setShowPaymentModal(false);
+      toast.error(e.message || 'Payment failed. Please try again.');
       setIsProcessing(false);
     }
   };
-
 
   // FIXED: Award $10 bonus to referrer when referred user upgrades to VIP
   const handleVIPReferralBonus = async (upgradedUserId, upgradedUserPhone) => {
@@ -353,6 +475,7 @@ const handleRealVIPUpgrade = async () => {
         console.log('No referral code or phone found');
         return;
       }
+      
       // Find referrer by their referral code
       const referrerQuery = await getDocs(
         query(collection(db, 'users'), where('referralCode', '==', referredByCode))
@@ -364,6 +487,7 @@ const handleRealVIPUpgrade = async () => {
       const referrerRef = referrerQuery.docs[0].ref;
       const referrerSnap = await getDoc(referrerRef);
       const referrerData = referrerSnap.data();
+      
       // Check if VIP bonus already awarded for this user
       const alreadyHasVIPBonus = (referrerData.recentReferrals || []).some(
         (r) => r.phone === upgradedUserPhone && (r.isVIP || r.vipUpgraded)
@@ -372,6 +496,7 @@ const handleRealVIPUpgrade = async () => {
         console.log('✓ VIP bonus already awarded for this user');
         return;
       }
+      
       // Award $10 VIP upgrade bonus (on top of initial $5)
       await updateDoc(referrerRef, {
         vipReferrals: increment(1),
@@ -386,6 +511,7 @@ const handleRealVIPUpgrade = async () => {
           upgradeDate: serverTimestamp(),
         }),
       });
+      
       console.log(`✅ VIP Referral Bonus: $${VIP_UPGRADE_BONUS} awarded to referrer!`);
 
       toast.success(`Your referrer earned $${VIP_UPGRADE_BONUS} because you upgraded!`, {
@@ -399,8 +525,10 @@ const handleRealVIPUpgrade = async () => {
 
   const finalizeVIPUpgrade = async () => {
     const newMax = VIP_CONFIG[selectedVIP].dailyTasks;
+    
     // Award VIP bonus to referrer
     await handleVIPReferralBonus(user.uid, profile.phone);
+    
     await updateDoc(doc(db, 'users', user.uid), {
       isVIP: true,
       tier: `${selectedVIP}VIP`,
@@ -408,12 +536,11 @@ const handleRealVIPUpgrade = async () => {
       lastTaskResetDate: serverTimestamp(),
       vipUpgradedAt: serverTimestamp(),
     });
+    
     setProfile(prev => ({ ...prev, isVIP: true, tier: `${selectedVIP}VIP` }));
     toast.success(`${selectedVIP} VIP Activated! ${newMax} tasks/day unlocked!`);
-    setShowVIPModal(false);
-    setIsProcessing(false);
     setSelectedVIP('');
-    setMpesaNumber('');
+    setTzsPhoneNumber('');
   };
 
   const handleSubmit = async (e) => {
@@ -424,12 +551,14 @@ const handleRealVIPUpgrade = async () => {
     }
     const usd = parseFloat(amount);
     if (isNaN(usd) || usd <= 0) return toast.error('Enter valid amount');
+    
     const hasCompletedOnboarding = profile?.hasDoneOnboardingTask || false;
     const tasksDone = profile?.ApprovedTasks || 0;
     const feeAmount = (usd * FEE_PERCENTAGE) / 100;
     const amountAfterFee = usd - feeAmount;
     const amountValid = amountAfterFee >= MIN_WITHDRAWAL_USD && balance >= usd;
     const tasksValid = tasksDone >= MIN_COMPLETED_TASKS;
+    
     if (!hasCompletedOnboarding || !amountValid || !tasksValid) {
       setEligibility({
         kycComplete: hasCompletedOnboarding,
@@ -439,6 +568,7 @@ const handleRealVIPUpgrade = async () => {
       setShowModal(true);
       return;
     }
+    
     if (method === 'mpesa') {
       const normalized = normalizePhoneNumber(phone);
       if (!normalized) return toast.error('Invalid M-Pesa number');
@@ -453,16 +583,19 @@ const handleRealVIPUpgrade = async () => {
         return toast.error('Complete bank details');
       }
     }
+    
     setLoading(true);
     try {
       const userDoc = doc(db, 'users', user.uid);
       const userSnap = await getDoc(userDoc);
       const currentBalance = userSnap.data()?.currentbalance || 0;
+      
       if (currentBalance < usd) {
         toast.error('Insufficient balance');
         setLoading(false);
         return;
       }
+      
       const withdrawalId = `${user.uid}_${Date.now()}`;
       const payload = {
         userId: user.uid,
@@ -473,11 +606,14 @@ const handleRealVIPUpgrade = async () => {
         status: 'pending',
         requestedAt: serverTimestamp(),
       };
+      
       if (method === 'mpesa') payload.phone = normalizePhoneNumber(phone);
       if (method === 'paypal') payload.paypalEmail = paypalEmail;
       if (method === 'bank') payload.bankDetails = bankDetails;
+      
       await setDoc(doc(db, 'withdrawals', withdrawalId), payload);
       await updateDoc(userDoc, { currentbalance: increment(-usd) });
+      
       const withdrawalInfo = {
         id: withdrawalId,
         amount: usd,
@@ -489,6 +625,7 @@ const handleRealVIPUpgrade = async () => {
         bankDetails: method === 'bank' ? bankDetails : null,
         timestamp: new Date(),
       };
+      
       startWithdrawalAnimation(withdrawalInfo);
       resetForm();
       setAmount('');
@@ -513,7 +650,6 @@ const handleRealVIPUpgrade = async () => {
       const referralCard = document.getElementById('referral-card');
       if (referralCard) {
         referralCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        // Add highlight effect
         referralCard.classList.add('ring-4', 'ring-lime-400', 'ring-offset-4', 'ring-offset-green-950');
         setTimeout(() => {
           referralCard.classList.remove('ring-4', 'ring-lime-400', 'ring-offset-4', 'ring-offset-green-950');
@@ -541,7 +677,91 @@ const handleRealVIPUpgrade = async () => {
       <ToastContainer position="top-center" theme="dark" autoClose={3000} />
       {showConfetti && <Confetti recycle={false} numberOfPieces={400} gravity={0.3} />}
 
-      {/* Animated Success Modal */}
+      {/* ANIMATED PAYMENT PROCESSING MODAL - PALMPESA */}
+      {showPaymentModal && paymentData && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-lg z-50 flex items-center justify-center p-4">
+          <div className="bg-green-950 rounded-2xl p-8 max-w-md w-full shadow-2xl border border-white/10">
+            <div className="text-center">
+              {paymentAnimationStep === 0 && (
+                <div>
+                  <div className="w-20 h-20 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Zap className="w-10 h-10 text-blue-400 animate-pulse" />
+                  </div>
+                  <h3 className="text-2xl font-black text-white mb-3">Processing Payment</h3>
+                  <p className="text-green-200 mb-2">Checking your phone for confirmation...</p>
+                  <p className="text-xs text-green-400 mb-6">Enter your PIN to complete payment</p>
+                  <div className="w-8 h-8 border-4 border-lime-400 border-t-transparent rounded-full animate-spin mx-auto" />
+                </div>
+              )}
+
+              {paymentAnimationStep === 1 && (
+                <div>
+                  <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <BadgeCheck className="w-10 h-10 text-lime-400 animate-bounce" />
+                  </div>
+                  <h3 className="text-2xl font-black text-white mb-3">Payment prompt sent!</h3>
+                  <p className="text-green-200 mb-6">Waiting for payment...</p>
+                  <div className="flex justify-center space-x-2">
+                    <div className="w-3 h-3 bg-lime-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-3 h-3 bg-lime-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <div className="w-3 h-3 bg-lime-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                </div>
+              )}
+
+              {paymentAnimationStep === 2 && (
+                <div>
+                  <div className="w-20 h-20 bg-lime-400 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <PartyPopper className="w-10 h-10 text-green-950" />
+                  </div>
+                  <h3 className="text-2xl font-black text-white mb-3">Hongera! 🎉</h3>
+                  <p className="text-green-200 mb-2">VIP activated successfully</p>
+                  
+                  <div className="bg-green-900 rounded-xl p-5 border border-lime-400 mt-6">
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="text-green-200">Amount Paid:</span>
+                      <span className="text-2xl font-black text-lime-400">
+                        TSh {paymentData.amount.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-green-300">Tier:</span>
+                      <span className="font-bold text-white">{paymentData.tier} VIP</span>
+                    </div>
+                    <div className="flex justify-between text-sm mb-3">
+                      <span className="text-green-300">Daily Tasks:</span>
+                      <span className="font-bold text-lime-400">{paymentData.tasks} tasks/day</span>
+                    </div>
+                    <div className="border-t border-white/10 pt-3">
+                      <p className="text-xs text-green-300">
+                        To: {paymentData.phone}
+                      </p>
+                      <p className="text-xs text-lime-400 mt-1">
+                        Activated: Instantly • Valid: Monthly
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 space-y-3">
+                    <button
+                      onClick={() => {
+                        setShowPaymentModal(false);
+                        setPaymentData(null);
+                        setPaymentAnimationStep(0);
+                      }}
+                      className="w-full bg-lime-400 hover:bg-lime-500 text-green-950 font-bold py-3 rounded-xl transition"
+                    >
+                      Start Earning More!
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Animated Withdrawal Success Modal */}
       {showSuccessModal && withdrawalData && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-lg z-50 flex items-center justify-center p-4">
           <div className="bg-green-900/90 backdrop-blur rounded-3xl p-8 max-w-md w-full shadow-2xl border border-lime-400/30 relative overflow-hidden">
@@ -627,181 +847,197 @@ const handleRealVIPUpgrade = async () => {
         </div>
       )}
 
-      {/* VIP Upgrade Modal */}
+      {/* VIP Upgrade Modal - PALMPESA/TZS VERSION */}
       {showVIPModal && (
-  <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div className="bg-green-950 rounded-2xl p-6 max-w-md w-full border border-white/10 shadow-2xl">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-5">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-lime-400/20 rounded-lg flex items-center justify-center">
-            <Crown className="w-6 h-6 text-lime-400" />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-white">Unlock VIP Access</h2>
-            <p className="text-xs text-green-200">Maximize Your Earning Potential</p>
-          </div>
-        </div>
-        <button 
-          onClick={() => setShowVIPModal(false)}
-          className="p-2 hover:bg-white/10 rounded-lg text-green-200 hover:text-white transition"
-        >
-          <X className="w-5 h-5" />
-        </button>
-      </div>
-  
-      {/* Value Proposition */}
-      <div className="bg-lime-400/20 border border-lime-400 rounded-lg p-4 mb-6">
-        <div className="flex items-start gap-3">
-          <div className="w-8 h-8 bg-lime-400 rounded-lg flex items-center justify-center flex-shrink-0">
-            <Zap className="w-5 h-5 text-green-950" />
-          </div>
-          <div>
-            <p className="text-white font-bold text-sm mb-1">Why Upgrade to VIP?</p>
-            <ul className="space-y-1.5 text-xs text-green-200">
-              <li className="flex items-center gap-2">
-                <Check className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
-                <span>Complete up to <strong className="text-white">15 tasks daily</strong> (vs 1 task)</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
-                <span>Earn <strong className="text-white">3-15× more per day</strong></span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
-                <span><strong className="text-white">Priority support</strong> & faster withdrawals</span>
-              </li>
-              <li className="flex items-center gap-2">
-                <Check className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
-                <span>Access to <strong className="text-white">premium high-paying tasks</strong></span>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </div>
-  
-      {/* VIP Tiers */}
-      <div className="mb-5">
-        <p className="text-xs font-semibold text-green-200 mb-3 uppercase tracking-wide">Choose Your Plan</p>
-        <div className="grid grid-cols-3 gap-3">
-          {Object.entries(VIP_CONFIG).map(([tier, config]) => {
-            const isSelected = selectedVIP === tier;
-            const isRecommended = tier === 'Silver';
-  
-            return (
-              <label
-                key={tier}
-                className={`relative cursor-pointer rounded-xl border-2 p-3.5 text-center transition-all ${
-                  isSelected 
-                    ? 'border-lime-400 bg-lime-400/10 shadow-lg shadow-lime-400/20' 
-                    : 'border-white/10 bg-green-900 hover:border-lime-400/50'
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-green-950 rounded-2xl p-6 max-w-md w-full border border-white/10 shadow-2xl">
+            {/* Header */}
+            <div className="flex justify-between items-center mb-5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-lime-400/20 rounded-lg flex items-center justify-center">
+                  <Crown className="w-6 h-6 text-lime-400" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">Fungua VIP Access</h2>
+                  <p className="text-xs text-green-200">Ongeza Kipato Chako 🇹🇿</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowVIPModal(false)}
+                className="p-2 hover:bg-white/10 rounded-lg text-green-200 hover:text-white transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+      
+            {/* Value Proposition */}
+            <div className="bg-lime-400/20 border border-lime-400 rounded-lg p-4 mb-6">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 bg-lime-400 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <Zap className="w-5 h-5 text-green-950" />
+                </div>
+                <div>
+                  <p className="text-white font-bold text-sm mb-1">Kwa Nini VIP?</p>
+                  <ul className="space-y-1.5 text-xs text-green-200">
+                    <li className="flex items-center gap-2">
+                      <Check className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
+                      <span>Kazi <strong className="text-white">hadi 15 kwa siku</strong> (badala ya 1)</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
+                      <span>Pata <strong className="text-white">3-15× zaidi kwa siku</strong></span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check className="w-3.5 h-3.5 text-lime-400 flex-shrink-0" />
+                      <span><strong className="text-white">Msaada wa haraka</strong> & utoaji wa pesa</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+      
+            {/* VIP Tiers */}
+            <div className="mb-5">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold text-green-200 uppercase tracking-wide">Chagua Mpango Wako</p>
+               
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                {Object.entries(VIP_CONFIG).map(([tier, config]) => {
+                  const isSelected = selectedVIP === tier;
+                  const isRecommended = tier === 'Silver';
+      
+                  return (
+                    <label
+                      key={tier}
+                      className={`relative cursor-pointer rounded-xl border-2 p-3.5 text-center transition-all ${
+                        isSelected 
+                          ? 'border-lime-400 bg-lime-400/10 shadow-lg shadow-lime-400/20' 
+                          : 'border-white/10 bg-green-900 hover:border-lime-400/50'
+                      }`}
+                    >
+                      {isRecommended && (
+                        <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-lime-400 text-green-950 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">
+                          Bora Zaidi
+                        </span>
+                      )}
+                      
+                      <input
+                        type="radio"
+                        name="vipTier"
+                        value={tier}
+                        checked={isSelected}
+                        onChange={(e) => setSelectedVIP(e.target.value)}
+                        className="sr-only"
+                      />
+      
+                      <Crown className={`w-7 h-7 mx-auto mb-2 ${isSelected ? 'text-lime-400' : 'text-green-400'}`} />
+                      <p className={`font-bold text-xs mb-1 ${isSelected ? 'text-white' : 'text-green-200'}`}>{tier}</p>
+                      <p className={`text-lg font-black mb-1 ${isSelected ? 'text-lime-400' : 'text-white'}`}>
+                        ${config.priceUSD}
+                      </p>
+                      <p className="text-[10px] text-green-300">TSh {config.priceTZS.toLocaleString()}</p>
+                      <div className="mt-2 pt-2 border-t border-white/10">
+                        <p className="text-xs font-semibold text-lime-400">{config.dailyTasks} Kazi/Siku</p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+      
+            {/* Payment Confirmation */}
+            {selectedVIP && (
+              <div className="bg-green-900 border-2 border-lime-400 rounded-lg p-4 mb-5">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-green-200">Gharama</span>
+                   <div className="flex items-center gap-1.5 bg-lime-400/20 px-2.5 py-1 rounded-full border border-lime-400/30">
+                  <span className="relative flex">
+                    <span className="animate-ping absolute inline-flex h-1.5 w-1.5 rounded-full bg-lime-400 opacity-75"></span>
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-lime-400"></span>
+                  </span>
+                  <span className="text-[10px] font-bold text-lime-400">1 USD = {tzsRate.toLocaleString()} TZS</span>
+                </div>
+                  <span className="text-xs bg-lime-400/20 text-lime-400 px-2 py-1 rounded font-semibold">
+                    {selectedVIP} VIP
+                  </span>
+                </div>
+                <p className="text-3xl font-black text-lime-400 mb-1">
+                  TSh {VIP_CONFIG[selectedVIP].priceTZS.toLocaleString()}
+                </p>
+                <p className="text-xs text-green-200">
+                  • Fungua {VIP_CONFIG[selectedVIP].dailyTasks} kazi kwa siku
+                </p>
+              </div>
+            )}
+      
+            {/* Tanzania Phone Input */}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-green-200 mb-2">
+                  Namba ya Simu (Tanzania)
+                </label>
+                <div className="relative">
+                  <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-green-400" />
+                  <input
+                    type="tel"
+                    value={tzsPhoneNumber}
+                    onChange={(e) => setTzsPhoneNumber(e.target.value)}
+                    placeholder="0769500302 au 0652345678"
+                    className="w-full pl-10 pr-4 py-3 rounded-lg bg-green-900 border-2 border-white/10 text-white placeholder-green-400 focus:border-lime-400 focus:outline-none transition"
+                  />
+                </div>
+                <p className="text-xs text-green-300 mt-1.5">Vodacom, Tigo, Airtel, au Halotel</p>
+              </div>
+      
+              {/* Action Button */}
+              <button
+                onClick={handlePalmPesaVIPUpgrade}
+                disabled={isProcessing || !selectedVIP || !isValidTZPhoneNumber(tzsPhoneNumber)}
+                className={`w-full py-3.5 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all ${
+                  selectedVIP && isValidTZPhoneNumber(tzsPhoneNumber) && !isProcessing
+                    ? 'bg-lime-400 hover:bg-lime-500 text-green-950 shadow-lg hover:shadow-xl hover:shadow-lime-400/20 active:scale-[0.98]'
+                    : 'bg-white/10 text-green-400 cursor-not-allowed'
                 }`}
               >
-                {isRecommended && (
-                  <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-lime-400 text-green-950 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">
-                    Best Value
-                  </span>
+                {isProcessing ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-green-950 border-t-transparent rounded-full animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <Smartphone className="w-5 h-5" />
+                    {selectedVIP ? `Lipa TSh ${VIP_CONFIG[selectedVIP].priceTZS.toLocaleString()}` : 'Chagua Mpango'}
+                  </>
                 )}
-                
-                <input
-                  type="radio"
-                  name="vipTier"
-                  value={tier}
-                  checked={isSelected}
-                  onChange={(e) => setSelectedVIP(e.target.value)}
-                  className="sr-only"
-                />
-  
-                <Crown className={`w-7 h-7 mx-auto mb-2 ${isSelected ? 'text-lime-400' : 'text-green-400'}`} />
-                <p className={`font-bold text-xs mb-1 ${isSelected ? 'text-white' : 'text-green-200'}`}>{tier}</p>
-                <p className={`text-lg font-black mb-1 ${isSelected ? 'text-lime-400' : 'text-white'}`}>
-                  ${config.priceUSD}
-                </p>
-                <p className="text-[10px] text-green-300">{formatKES(config.priceUSD)}</p>
-                <div className="mt-2 pt-2 border-t border-white/10">
-                  <p className="text-xs font-semibold text-lime-400">{config.dailyTasks} Tasks/Day</p>
+              </button>
+      
+              {/* Trust Indicators */}
+              <div className="flex items-center justify-center gap-4 text-xs text-green-300">
+                <div className="flex items-center gap-1">
+                  <CheckCircle className="w-3.5 h-3.5 text-lime-400" />
+                  <span>Malipo Salama</span>
                 </div>
-              </label>
-            );
-          })}
-        </div>
-      </div>
-  
-      {/* Payment Confirmation */}
-      {selectedVIP && (
-        <div className="bg-green-900 border-2 border-lime-400 rounded-lg p-4 mb-5">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-green-200">Your Investment</span>
-            <span className="text-xs bg-lime-400/20 text-lime-400 px-2 py-1 rounded font-semibold">
-              {selectedVIP} VIP
-            </span>
+                <div className="flex items-center gap-1">
+                  <CheckCircle className="w-3.5 h-3.5 text-lime-400" />
+                  <span>Activation Haraka</span>
+                </div>
+              </div>
+
+              <div className="text-center pt-2">
+                <p className="text-xs text-green-300 mb-2">Mitandao Inayotumika:</p>
+                <div className="flex justify-center gap-2 text-[10px] text-green-200">
+                  <span className="bg-white/10 px-2 py-1 rounded">Vodacom</span>
+                  <span className="bg-white/10 px-2 py-1 rounded">Tigo</span>
+                  <span className="bg-white/10 px-2 py-1 rounded">Airtel</span>
+                  <span className="bg-white/10 px-2 py-1 rounded">Halotel</span>
+                </div>
+              </div>
+            </div>
           </div>
-          <p className="text-3xl font-black text-lime-400 mb-1">
-            {formatKES(VIP_CONFIG[selectedVIP].priceUSD)}
-          </p>
-          <p className="text-xs text-green-200">
-            ≈ ${VIP_CONFIG[selectedVIP].priceUSD} USD • Unlock {VIP_CONFIG[selectedVIP].dailyTasks} tasks daily
-          </p>
         </div>
       )}
-  
-      {/* M-Pesa Input */}
-      <div className="space-y-4">
-        <div>
-          <label className="block text-xs font-semibold text-green-200 mb-2">
-            M-Pesa Number
-          </label>
-          <div className="relative">
-            <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-green-400" />
-            <input
-              type="tel"
-              value={mpesaNumber}
-              onChange={(e) => setMpesaNumber(e.target.value)}
-              placeholder="0712345678 or 0112345678"
-              className="w-full pl-10 pr-4 py-3 rounded-lg bg-green-900 border-2 border-white/10 text-white placeholder-green-400 focus:border-lime-400 focus:outline-none transition"
-            />
-          </div>
-          <p className="text-xs text-green-300 mt-1.5">Enter your Safaricom number to receive payment prompt</p>
-        </div>
-  
-        {/* Action Button */}
-        <button
-          onClick={handleRealVIPUpgrade}
-          disabled={isProcessing || !selectedVIP || !isValidMpesaNumber(mpesaNumber)}
-          className={`w-full py-3.5 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all ${
-            selectedVIP && isValidMpesaNumber(mpesaNumber)
-              ? 'bg-lime-400 hover:bg-lime-500 text-green-950 shadow-lg hover:shadow-xl hover:shadow-lime-400/20 active:scale-[0.98]'
-              : 'bg-white/10 text-green-400 cursor-not-allowed'
-          }`}
-        >
-          {isProcessing ? (
-            <>
-              <div className="w-5 h-5 border-2 border-green-950 border-t-transparent rounded-full animate-spin" />
-              Processing Payment...
-            </>
-          ) : (
-            <>
-              <Smartphone className="w-5 h-5" />
-              {selectedVIP ? `Upgrade to ${selectedVIP} VIP` : 'Select a Plan to Continue'}
-            </>
-          )}
-        </button>
-  
-        {/* Trust Indicators */}
-        <div className="flex items-center justify-center gap-4 text-xs text-green-300">
-          <div className="flex items-center gap-1">
-            <CheckCircle className="w-3.5 h-3.5 text-lime-400" />
-            <span>Secure Payment</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <CheckCircle className="w-3.5 h-3.5 text-lime-400" />
-            <span>Instant Activation</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
 
       {/* STRATEGIC Eligibility Modal - Shows 3 first, then reveals final 2 */}
       {showModal && (
@@ -1063,7 +1299,7 @@ const handleRealVIPUpgrade = async () => {
                   <div>
                     <p className="text-sm text-green-300">Available Balance</p>
                     <p className="text-3xl font-black text-lime-400">${balance.toFixed(2)}</p>
-                    <p className="text-xs text-green-400">{formatKES(balance)}</p>
+                    <p className="text-xs text-green-400">{formatTZS(balance)}</p>
                   </div>
                   <DollarSign className="w-10 h-10 text-lime-400" />
                 </div>
@@ -1100,7 +1336,7 @@ const handleRealVIPUpgrade = async () => {
                           <span>You Receive</span>
                           <span>${receive.toFixed(2)}</span>
                         </div>
-                        <p className="text-xs text-green-400 mt-1">≈ {formatKES(receive)}</p>
+                        <p className="text-xs text-green-400 mt-1">≈ {formatTZS(receive)}</p>
                         {receive < MIN_WITHDRAWAL_USD && (
                           <p className="text-xs text-red-400 mt-2 font-medium">
                             ⚠ Amount after fee must be at least ${MIN_WITHDRAWAL_USD.toFixed(2)}
@@ -1418,7 +1654,7 @@ const handleRealVIPUpgrade = async () => {
                         <div className="flex justify-between items-start mb-1">
                           <div className="flex-1">
                             <p className="font-bold text-white">${w.amount?.toFixed(2)}</p>
-                            <p className="text-xs text-green-400">{formatKES(w.amount)}</p>
+                            <p className="text-xs text-green-400">{formatTZS(w.amount)}</p>
                             <p className="text-xs text-green-400 capitalize">
                               {w.method === 'mpesa' && w.phone
                                 ? `M-Pesa •••${w.phone?.slice(-4)}`
