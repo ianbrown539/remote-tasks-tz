@@ -31,7 +31,6 @@ import {
   Calendar,
   X,
   Check,
-  Lock,
   ShieldCheck,
   TrendingUp,
   Crown,
