@@ -51,9 +51,9 @@ import { getCurrentTZSRate, formatTZS } from './UserDashboard';
 const getVIPConfig = () => {
   const rate = getCurrentTZSRate();
   return {
-    Bronze: { priceUSD: 0.09, priceTZS: Math.round(0.09 * rate), dailyTasks: 3 },
-    Silver: { priceUSD: 0.10, priceTZS: Math.round(0.10 * rate), dailyTasks: 8 },
-    Gold:   { priceUSD: 0.11, priceTZS: Math.round(0.11 * rate), dailyTasks: 15 },
+    Bronze: { priceUSD: 1.99, priceTZS: Math.round(1.99 * rate), dailyTasks: 3 },
+    Silver: { priceUSD: 3.99, priceTZS: Math.round(3.99 * rate), dailyTasks: 8 },
+    Gold:   { priceUSD: 9.99, priceTZS: Math.round(9.99 * rate), dailyTasks: 15 },
   };
 };
 
